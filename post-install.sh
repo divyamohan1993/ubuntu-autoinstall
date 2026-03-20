@@ -10,17 +10,26 @@ echo "=== Post-install started at $(date) ==="
 
 export DEBIAN_FRONTEND=noninteractive
 
+# ─── Version-specific config (update these for new Ubuntu releases) ───
+UBUNTU_CODENAME=$(lsb_release -cs)              # e.g. noble (24.04), oracular (26.04)
+UBUNTU_VERSION=$(lsb_release -rs)               # e.g. 24.04, 26.04
+NVIDIA_DRIVER="nvidia-driver-535"               # Change to latest supported driver
+HWE_KERNEL="linux-generic-hwe-${UBUNTU_VERSION}" # Auto-derives from version
+NVM_VERSION="v0.40.3"                           # Check https://github.com/nvm-sh/nvm/releases
+
+echo "Detected: Ubuntu ${UBUNTU_VERSION} (${UBUNTU_CODENAME})"
+
 # ─── 1. Add external APT repositories ────────────────────────────────
 
 # Docker
 install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
 chmod a+r /etc/apt/keyrings/docker.asc
-echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu noble stable" \
+echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu ${UBUNTU_CODENAME} stable" \
   > /etc/apt/sources.list.d/docker.list
 
 # NVIDIA (driver repo — for GPU driver, not full CUDA toolkit)
-curl -fsSL https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb \
+curl -fsSL https://developer.download.nvidia.com/compute/cuda/repos/ubuntu${UBUNTU_VERSION//.}/x86_64/cuda-keyring_1.1-1_all.deb \
   -o /tmp/cuda-keyring.deb
 dpkg -i /tmp/cuda-keyring.deb
 
@@ -59,8 +68,8 @@ apt-get install -y \
   python3-pip \
   python3-venv \
   ntfs-3g \
-  linux-generic-hwe-24.04 \
-  nvidia-driver-535 \
+  ${HWE_KERNEL} \
+  ${NVIDIA_DRIVER} \
   microsoft-edge-stable \
   containerd.io \
   docker-ce \
@@ -206,7 +215,7 @@ snap install code --classic
 
 if [ ! -d /home/dmj/.nvm ]; then
   sudo -u dmj bash -c '
-    curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+    curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_VERSION}/install.sh | bash
     export NVM_DIR="$HOME/.nvm"
     [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
     nvm install --lts

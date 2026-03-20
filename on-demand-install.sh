@@ -6,6 +6,10 @@
 
 export DEBIAN_FRONTEND=noninteractive
 
+# ─── Auto-detect Ubuntu version ───────────────────────────────────────
+UBUNTU_CODENAME=$(lsb_release -cs 2>/dev/null || echo "noble")
+UBUNTU_VERSION=$(lsb_release -rs 2>/dev/null || echo "24.04")
+
 # ─── Colors & formatting ─────────────────────────────────────────────
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -116,7 +120,7 @@ do_install() {
       # MongoDB repo
       add_repo_key "https://www.mongodb.org/static/pgp/server-8.0.asc" \
         "/usr/share/keyrings/mongodb-server-8.0.gpg"
-      echo "deb [arch=amd64 signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg] https://repo.mongodb.org/apt/ubuntu noble/mongodb-org/8.0 multiverse" \
+      echo "deb [arch=amd64 signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg] https://repo.mongodb.org/apt/ubuntu ${UBUNTU_CODENAME}/mongodb-org/8.0 multiverse" \
         | sudo tee /etc/apt/sources.list.d/mongodb-org-8.0.list >/dev/null
       sudo apt-get update -qq
       run_install "PostgreSQL" apt_install postgresql postgresql-client postgresql-contrib
@@ -143,7 +147,7 @@ do_install() {
       header "R Language"
       add_repo_key "https://cloud.r-project.org/bin/linux/ubuntu/marutter_pubkey.asc" \
         "/usr/share/keyrings/r-project.gpg"
-      echo "deb [signed-by=/usr/share/keyrings/r-project.gpg] https://cloud.r-project.org/bin/linux/ubuntu noble-cran40/" \
+      echo "deb [signed-by=/usr/share/keyrings/r-project.gpg] https://cloud.r-project.org/bin/linux/ubuntu ${UBUNTU_CODENAME}-cran40/" \
         | sudo tee /etc/apt/sources.list.d/r-project.list >/dev/null
       sudo apt-get update -qq
       run_install "R base" apt_install r-base
@@ -153,7 +157,7 @@ do_install() {
       header "Infrastructure Tools"
       add_repo_key "https://apt.releases.hashicorp.com/gpg" \
         "/usr/share/keyrings/hashicorp-archive-keyring.gpg"
-      echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com noble main" \
+      echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com ${UBUNTU_CODENAME} main" \
         | sudo tee /etc/apt/sources.list.d/hashicorp.list >/dev/null
       sudo apt-get update -qq
       run_install "Terraform" apt_install terraform
@@ -164,7 +168,7 @@ do_install() {
       header "Security Scanner"
       add_repo_key "https://aquasecurity.github.io/trivy-repo/deb/public.key" \
         "/usr/share/keyrings/trivy.gpg"
-      echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb noble main" \
+      echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb ${UBUNTU_CODENAME} main" \
         | sudo tee /etc/apt/sources.list.d/trivy.list >/dev/null
       sudo apt-get update -qq
       run_install "Trivy" apt_install trivy

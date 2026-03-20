@@ -1,6 +1,6 @@
 # Ubuntu 24.04 LTS — Automated System Setup
 
-Lean, automated Ubuntu 24.04 installation — drivers, Docker, core CLI tools, VS Code, Claude Code, and performance-tuned kernel settings. Everything else is available on-demand via `on-demand-install.sh`.
+Lean, automated Ubuntu 24.04 installation — drivers, Docker, Edge, core CLI tools, VS Code, Claude Code, and performance-tuned kernel settings. Bloatware removed. Everything else available on-demand via an interactive installer.
 
 > **⚠️ SECURITY NOTICE:** Default credentials are **`dmj` / `dmj`** (intentionally public for quick setup).
 > **Change your password immediately** after installation: `sudo passwd dmj`
@@ -13,33 +13,16 @@ Lean, automated Ubuntu 24.04 installation — drivers, Docker, core CLI tools, V
 - [Files in This Repo](#files-in-this-repo)
 - [Disk Partitioning](#disk-partitioning)
 - [What Gets Installed (Base)](#what-gets-installed-base)
-  - [Packages installed during OS install](#packages-installed-during-os-installation)
-  - [External APT Repositories](#external-apt-repositories)
-  - [Packages installed on first boot](#packages-installed-on-first-boot)
-  - [Snap Packages](#snap-packages)
-  - [Node.js + Claude Code](#nodejs--claude-code)
 - [What Gets Removed](#what-gets-removed)
+- [What Gets Kept (Ubuntu defaults)](#what-gets-kept-ubuntu-defaults)
 - [On-Demand Packages](#on-demand-packages)
 - [System Settings Changed](#system-settings-changed)
-  - [Memory & Swap Tuning](#memory--swap-tuning)
-  - [Network Optimization](#network-optimization)
-  - [Filesystem & Kernel Tuning](#filesystem--kernel-tuning)
-  - [Security Settings](#security-settings)
-  - [Filesystem Mounts (fstab)](#filesystem-mounts-fstab)
-  - [User & Group Changes](#user--group-changes)
-  - [Systemd Services](#systemd-services)
-  - [Login Banner](#login-banner)
 - [How to Use](#how-to-use)
-  - [Option A: Ventoy USB (recommended)](#option-a-ventoy-usb-recommended)
-  - [Option B: Rufus USB](#option-b-rufus-usb)
-  - [Option C: Custom ISO (advanced)](#option-c-custom-iso-advanced)
-  - [Boot and Walk Away](#boot-and-walk-away)
-  - [Monitor Progress](#monitor-progress)
-  - [Reboot and Secure](#reboot-and-secure)
 - [How the Auto-Fetch Works](#how-the-auto-fetch-works)
 - [Customization Guide](#customization-guide)
 - [Troubleshooting](#troubleshooting)
 - [Requirements](#requirements)
+- [Contributing](#contributing)
 - [License](#license)
 
 ---
@@ -54,12 +37,15 @@ In one unattended installation, this setup:
 4. **On first boot**, automatically:
    - Installs drivers (NVIDIA GPU + HWE kernel)
    - Sets up Docker (Engine, CLI, Compose, Buildx)
+   - Installs Microsoft Edge (replaces Firefox)
    - Installs core CLI tools (ripgrep, fzf, bat, eza, git-delta, etc.)
-   - Installs VS Code, Node.js (LTS), and Claude Code
-   - Removes Firefox (replaced by Edge)
+   - Installs VS Code, Node.js (LTS), and Claude Code (CLI + extension)
+   - Configures AppArmor so Edge runs without `--no-sandbox`
+   - Removes bloatware (LibreOffice, Thunderbird, games, etc.)
    - Applies kernel/network/memory performance optimizations
+   - Shows a password-change reminder on every login
 
-**Everything else** (databases, CUDA toolkit, ML libraries, R, Terraform, etc.) is **not installed by default** but can be added in one command via `on-demand-install.sh`.
+**Everything else** (databases, CUDA toolkit, ML libraries, R, Terraform, office apps, etc.) can be added via the **interactive on-demand installer**.
 
 ---
 
@@ -68,9 +54,13 @@ In one unattended installation, this setup:
 | File | Purpose | When It Runs |
 |------|---------|--------------|
 | [`autoinstall.yaml`](autoinstall.yaml) | Ubuntu autoinstall config — disk layout, locale, identity, minimal base packages | During OS installation (Subiquity installer) |
-| [`post-install.sh`](post-install.sh) | First-boot script — drivers, Docker, core CLI, VS Code, Claude Code, sysctl optimizations | On first boot (one-shot systemd service) |
-| [`on-demand-install.sh`](on-demand-install.sh) | Optional extras installer — databases, CUDA, ML libs, R, Terraform, etc. | Manually, whenever you need something |
+| [`post-install.sh`](post-install.sh) | First-boot script — drivers, Docker, Edge, CLI tools, VS Code, Claude Code, sysctl tuning, bloatware removal | On first boot (one-shot systemd service, self-deletes after) |
+| [`on-demand-install.sh`](on-demand-install.sh) | Interactive optional package installer — 20 categories including databases, CUDA, ML libs, office apps, media players | Manually, whenever you need something |
 | [`README.md`](README.md) | This documentation | — |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | How to contribute | — |
+| [`LICENSE`](LICENSE) | MIT License | — |
+| [`SECURITY.md`](SECURITY.md) | Security policy | — |
+| [`CHANGELOG.md`](CHANGELOG.md) | Version history | — |
 
 ---
 
@@ -86,7 +76,12 @@ The installer targets the **largest disk** on the system and creates:
 | Part 4 | Remainder (~22 GB on 224 GB disk) | swap | `[SWAP]` | Swap space |
 
 Additional mounts in `/etc/fstab`:
-- `/tmp` → `tmpfs` (4 GB, RAM-backed, `noatime,nosuid,nodev`)
+
+| Mount | Type | Options | Purpose |
+|-------|------|---------|---------|
+| `/` | ext4 | `noatime,errors=remount-ro` | `noatime` reduces unnecessary disk writes |
+| `/mnt/experiments` | ntfs3 | `noatime,uid=1000,gid=1000,nofail` | Owned by first user, won't block boot if missing |
+| `/tmp` | tmpfs | `noatime,nosuid,nodev,size=4G` | RAM-backed, fast, auto-cleared on reboot |
 
 > **Note:** The experiments partition uses NTFS for dual-boot Windows/Linux compatibility.
 
@@ -94,9 +89,7 @@ Additional mounts in `/etc/fstab`:
 
 ## What Gets Installed (Base)
 
-### Packages installed during OS installation
-
-Installed by the Ubuntu installer itself (before first boot):
+### During OS installation (autoinstall.yaml)
 
 | Package | What It Is |
 |---------|-----------|
@@ -107,119 +100,197 @@ Installed by the Ubuntu installer itself (before first boot):
 | `tree` | Directory listing |
 | `python3-pip` | Python package manager |
 | `python3-venv` | Python virtual environments |
-| `ntfs-3g` | NTFS filesystem support (required for experiments partition) |
+| `ntfs-3g` | NTFS filesystem support |
 
-### External APT Repositories
-
-Only essential repos are added:
-
-| Repository | Source URL | What It Provides |
-|------------|-----------|-----------------|
-| **Docker CE** | `download.docker.com/linux/ubuntu` | Docker Engine, CLI, Compose, Buildx |
-| **NVIDIA** | `developer.download.nvidia.com/compute/cuda/repos/ubuntu2404` | GPU driver (not full CUDA toolkit) |
-| **Microsoft Edge** | `packages.microsoft.com/repos/edge` | Edge browser (replaces Firefox) |
-| **eza** | `deb.gierens.de` | Modern `ls` replacement |
-| **Git PPA** | `ppa:git-core/ppa` | Latest Git version |
-
-### Packages installed on first boot
+### On first boot (post-install.sh)
 
 #### Drivers & Kernel
 | Package | What It Is |
 |---------|-----------|
 | `nvidia-driver-535` | NVIDIA GPU driver |
-| `linux-generic-hwe-24.04` | Hardware Enablement kernel (latest hardware support) |
+| `linux-generic-hwe-24.04` | Hardware Enablement kernel |
 
-#### Containers
+#### Docker
 | Package | What It Is |
 |---------|-----------|
 | `docker-ce` | Docker Engine |
 | `docker-ce-cli` | Docker CLI |
 | `containerd.io` | Container runtime |
 | `docker-compose-plugin` | Docker Compose v2 |
-| `docker-buildx-plugin` | Docker Buildx (multi-platform builds) |
+| `docker-buildx-plugin` | Multi-platform builds |
 
 #### CLI Tools
 | Package | What It Is |
 |---------|-----------|
-| `git` | Version control (latest from PPA) |
+| `git` | Latest from PPA |
 | `git-delta` | Beautiful git diffs |
 | `ripgrep` | Fast grep (`rg`) |
 | `fzf` | Fuzzy finder |
 | `bat` | `cat` with syntax highlighting |
-| `fd-find` | Fast `find` alternative (`fdfind`) |
-| `eza` | Modern `ls` replacement (colors, git integration) |
+| `fd-find` | Fast `find` alternative |
+| `eza` | Modern `ls` (colors, git integration) |
 | `jq` | JSON processor |
 | `tmux` | Terminal multiplexer |
 | `tree` | Directory tree listing |
-| `pipx` | Install Python CLI tools in isolation |
+| `pipx` | Isolated Python CLI tools |
 
 #### Browser
 | Package | What It Is |
 |---------|-----------|
 | `microsoft-edge-stable` | Microsoft Edge (replaces Firefox) |
 
-### Snap Packages
-
-| Package | What It Provides |
-|---------|-----------------|
+#### Snap packages
+| Package | What It Is |
+|---------|-----------|
 | `code --classic` | Visual Studio Code |
 
-### Node.js + Claude Code
-
+#### Node.js + Claude Code
 | Tool | Install Method | What It Is |
 |------|---------------|-----------|
 | **nvm** v0.40.3 | curl script | Node Version Manager |
 | **Node.js LTS** | nvm | JavaScript runtime |
-| **`@anthropic-ai/claude-code`** | npm (global) | Claude Code CLI — AI coding agent for the terminal |
-| **`anthropic.claude-code`** | VS Code extension | Claude Code for VS Code — AI pair programming |
+| **`@anthropic-ai/claude-code`** | npm (global) | Claude Code CLI — AI coding agent |
+| **`anthropic.claude-code`** | VS Code extension | Claude Code for VS Code |
 
-- **CLI:** Run `claude` in any terminal
-- **VS Code:** Extension appears in the sidebar
-- **API key:** Set on first use: `export ANTHROPIC_API_KEY=sk-...` or log in via `claude`
+#### External APT Repositories added
+| Repository | What It Provides |
+|------------|-----------------|
+| **Docker CE** (`download.docker.com`) | Docker Engine, CLI, Compose, Buildx |
+| **NVIDIA** (`developer.download.nvidia.com`) | GPU driver |
+| **Microsoft Edge** (`packages.microsoft.com`) | Edge browser |
+| **eza** (`deb.gierens.de`) | Modern `ls` |
+| **Git PPA** (`ppa:git-core/ppa`) | Latest Git |
 
 ---
 
 ## What Gets Removed
 
+### Snap
 | Package | Why |
 |---------|-----|
-| `firefox` (snap) | Replaced by Microsoft Edge |
+| `firefox` | Replaced by Microsoft Edge |
+
+### Apt packages
+| Package | What It Was |
+|---------|------------|
+| `libreoffice-*` | Office suite (available on-demand as `office`) |
+| `thunderbird` | Email client (available on-demand as `email`) |
+| `aisleriot`, `gnome-mahjongg`, `gnome-mines`, `gnome-sudoku` | Games |
+| `rhythmbox` | Music player (available on-demand as `media`) |
+| `shotwell` | Photo manager (available on-demand as `photo`) |
+| `cheese` | Webcam app (available on-demand as `photo`) |
+| `totem`, `totem-plugins` | Video player (available on-demand as `media`) |
+| `remmina` | Remote desktop (available on-demand as `remote`) |
+| `transmission-gtk` | Torrent client (available on-demand as `torrent`) |
+| `simple-scan` | Scanner app (available on-demand as `scanner`) |
+| `gnome-todo`, `gnome-contacts`, `gnome-calendar`, `gnome-maps`, `gnome-weather`, `gnome-clocks` | GNOME apps (available on-demand as `gnome-apps`) |
+| `gnome-font-viewer`, `gnome-logs` | Rarely used utilities |
+| `brltty` | Braille display driver |
+| `orca`, `gnome-accessibility-themes` | Accessibility (available on-demand as `accessibility`) |
+| `update-manager` | GUI updater (App Center handles this) |
+| `language-selector-gnome` | Language settings (set once during install) |
+| `yelp` | GNOME Help system |
+
+---
+
+## What Gets Kept (Ubuntu defaults)
+
+These Ubuntu defaults are **not removed**:
+
+| App | Why It Stays |
+|-----|-------------|
+| **Files** (Nautilus) | File manager — essential |
+| **Settings** | System settings — essential |
+| **Terminal** | Essential |
+| **Text Editor** | Quick file editing |
+| **Calculator** | Basic utility |
+| **System Monitor** | Process/resource monitoring |
+| **Utilities** | Archive manager, etc. |
+| **Startup Applications** | Manage login startup items |
+| **Disk Usage Analyzer** (Baobab) | Find what's eating disk space |
+| **Document Viewer** (Evince) | PDF viewer |
+| **Image Viewer** (Eye of GNOME) | View images |
+| **Passwords & Keys** (Seahorse) | SSH/GPG key management |
+| **Characters** | Emoji and special character picker |
+| **Power Manager** | Battery/power profiles (laptop) |
+| **USB Startup Disk Creator** | Create bootable USBs |
+| **Speech Dispatcher** | Text-to-speech backend |
+| **App Center** (GNOME Software) | GUI package installer — fallback |
+| **Software & Updates** | Repository and driver management |
+| **NVIDIA tools** | Nsight, X Server Settings (come with driver) |
+| **All default snaps** (except Firefox) | snap-store, firmware-updater, etc. |
 
 ---
 
 ## On-Demand Packages
 
-Everything below is **NOT installed by default**. Install what you need using:
+Everything removed from base is available via the **interactive on-demand installer**:
+
+### Interactive mode (recommended)
 
 ```bash
-# Download the on-demand installer
 curl -fsSL https://raw.githubusercontent.com/divyamohan1993/ubuntu-autoinstall/main/on-demand-install.sh -o on-demand-install.sh
 chmod +x on-demand-install.sh
-
-# Install specific categories
-./on-demand-install.sh databases
-./on-demand-install.sh cuda ml-libs
-
-# Or install everything at once
-./on-demand-install.sh all
+./on-demand-install.sh
 ```
 
-| Category | Command | What It Installs |
-|----------|---------|-----------------|
-| `databases` | `./on-demand-install.sh databases` | PostgreSQL (server + client + contrib), MongoDB 8.0, Redis (server + tools), SQLite3 |
-| `cuda` | `./on-demand-install.sh cuda` | NVIDIA CUDA toolkit (driver already installed) |
-| `ml-libs` | `./on-demand-install.sh ml-libs` | OpenBLAS, LAPACK, FFTW3, OpenMPI, gfortran |
-| `r-lang` | `./on-demand-install.sh r-lang` | R programming language (from CRAN) |
-| `infra` | `./on-demand-install.sh infra` | Terraform, Ansible |
-| `security` | `./on-demand-install.sh security` | Trivy container vulnerability scanner |
-| `firefox` | `./on-demand-install.sh firefox` | Firefox browser (if you want it back) |
-| `build-tools` | `./on-demand-install.sh build-tools` | CMake, Ninja, Shellcheck, pre-commit |
-| `extras` | `./on-demand-install.sh extras` | httpie, lynx, stress-ng, xvfb, python3-docx |
-| `math-libs` | `./on-demand-install.sh math-libs` | libgmp, libmpfr, libmpc |
-| `codecs` | `./on-demand-install.sh codecs` | Ubuntu restricted addons (multimedia codecs) |
-| `all` | `./on-demand-install.sh all` | Everything above |
+This shows a colored, numbered menu:
+```
+  ┌──────────────────────────────────────────────┐
+  │       On-Demand Package Installer            │
+  └──────────────────────────────────────────────┘
 
-You can combine categories: `./on-demand-install.sh databases cuda ml-libs`
+  #   Category                  Packages
+  1   Databases                 PostgreSQL, MongoDB 8.0, Redis, SQLite
+  2   CUDA Toolkit              NVIDIA CUDA development toolkit
+  3   ML / Science Libraries    OpenBLAS, LAPACK, FFTW3, OpenMPI, gfortran
+  ...
+  20  Accessibility             Orca, accessibility themes
+
+  A   Install ALL
+  Q   Quit
+
+  Enter choices (e.g. 1 3 5): _
+```
+
+### CLI mode
+
+```bash
+./on-demand-install.sh databases cuda ml-libs    # specific categories
+./on-demand-install.sh all                        # everything
+./on-demand-install.sh --help                     # show all categories
+```
+
+### All 20 categories
+
+| # | Category | ID | What It Installs |
+|---|----------|----|-----------------|
+| 1 | Databases | `databases` | PostgreSQL, MongoDB 8.0, Redis, SQLite |
+| 2 | CUDA Toolkit | `cuda` | NVIDIA CUDA toolkit (driver already installed) |
+| 3 | ML / Science Libraries | `ml-libs` | OpenBLAS, LAPACK, FFTW3, OpenMPI, gfortran |
+| 4 | R Language | `r-lang` | R from CRAN |
+| 5 | Infrastructure Tools | `infra` | Terraform, Ansible |
+| 6 | Security Scanner | `security` | Trivy |
+| 7 | Build Tools | `build-tools` | CMake, Ninja, Shellcheck, pre-commit |
+| 8 | Math Libraries | `math-libs` | libgmp, libmpfr, libmpc |
+| 9 | Office Suite | `office` | LibreOffice |
+| 10 | Email Client | `email` | Thunderbird |
+| 11 | Media Players | `media` | Totem, Rhythmbox |
+| 12 | Photo Tools | `photo` | Shotwell, Cheese |
+| 13 | Remote Desktop | `remote` | Remmina |
+| 14 | Torrent Client | `torrent` | Transmission |
+| 15 | Firefox | `firefox` | Firefox browser |
+| 16 | Scanner | `scanner` | Simple Scan |
+| 17 | Multimedia Codecs | `codecs` | Ubuntu restricted addons (MP3, H.264, etc.) |
+| 18 | CLI Extras | `extras` | httpie, lynx, stress-ng, xvfb, python3-docx |
+| 19 | GNOME Apps | `gnome-apps` | Calendar, Contacts, Maps, Weather, Clocks, Todo |
+| 20 | Accessibility | `accessibility` | Orca, accessibility themes |
+
+Features:
+- Select by number (`1 3 5`), range (`1-5`), name (`databases`), or `all`
+- Each package installs individually — failures don't stop the rest
+- Color-coded summary at the end: what succeeded, what failed, retry commands
+- Supports combining: `./on-demand-install.sh databases cuda ml-libs`
 
 ---
 
@@ -233,27 +304,25 @@ Every system setting modified by this setup is documented below. Nothing is hidd
 
 | Setting | Value | Default | What It Does |
 |---------|-------|---------|-------------|
-| `vm.swappiness` | `1` | `60` | Almost never swap to disk — prefer keeping data in RAM |
-| `vm.vfs_cache_pressure` | `50` | `100` | Keep filesystem caches in memory longer |
-| `vm.dirty_ratio` | `40` | `20` | Allow up to 40% of RAM for dirty (unwritten) pages before forcing writes |
-| `vm.dirty_background_ratio` | `5` | `10` | Start background writeback at 5% dirty pages |
-| `vm.overcommit_memory` | `1` | `0` | Always allow memory allocation (useful for ML workloads and `fork()`) |
-| `vm.min_free_kbytes` | `1048576` (1 GB) | `67584` | Keep at least 1 GB free for kernel emergency allocations |
-| `vm.admin_reserve_kbytes` | `524288` (512 MB) | `8192` | Reserve 512 MB for root processes |
+| `vm.swappiness` | `1` | `60` | Almost never swap — prefer RAM |
+| `vm.vfs_cache_pressure` | `50` | `100` | Keep filesystem caches longer |
+| `vm.dirty_ratio` | `40` | `20` | Allow 40% RAM for dirty pages before forcing writes |
+| `vm.dirty_background_ratio` | `5` | `10` | Start background writeback at 5% |
+| `vm.overcommit_memory` | `1` | `0` | Always allow allocation (useful for ML/fork) |
+| `vm.min_free_kbytes` | `1048576` (1 GB) | `67584` | Keep 1 GB free for kernel |
+| `vm.admin_reserve_kbytes` | `524288` (512 MB) | `8192` | Reserve 512 MB for root |
 | `vm.user_reserve_kbytes` | `524288` (512 MB) | `131072` | Reserve 512 MB for user recovery |
-| `vm.oom_kill_allocating_task` | `1` | `0` | Kill the process that triggered OOM (not a random one) |
-| `vm.panic_on_oom` | `0` | `0` | Don't kernel panic on OOM — just kill the offending process |
-| `vm.zone_reclaim_mode` | `0` | `0` | Don't aggressively reclaim NUMA zones (better for single-socket systems) |
+| `vm.oom_kill_allocating_task` | `1` | `0` | Kill OOM trigger (not random process) |
+| `vm.panic_on_oom` | `0` | `0` | Don't kernel panic on OOM |
+| `vm.zone_reclaim_mode` | `0` | `0` | Don't aggressively reclaim NUMA zones |
 
-**File:** `/etc/sysctl.d/99-performance.conf`
+**File:** `/etc/sysctl.d/99-performance.conf` (loads after, wins on overlap)
 
 | Setting | Value | Default | What It Does |
 |---------|-------|---------|-------------|
-| `vm.min_free_kbytes` | `1572864` (1.5 GB) | `67584` | Keep 1.5 GB free for kernel + UI responsiveness |
-| `vm.overcommit_memory` | `0` | `0` | Heuristic overcommit (default safe mode) |
-| `vm.overcommit_ratio` | `95` | `50` | Allow committing up to 95% of RAM + swap |
-
-> **Note:** `99-performance.conf` loads after `99-ml-performance.conf` (alphabetical), so where settings overlap (e.g. `vm.min_free_kbytes`), `99-performance.conf` wins.
+| `vm.min_free_kbytes` | `1572864` (1.5 GB) | `67584` | 1.5 GB reserved for kernel + UI |
+| `vm.overcommit_memory` | `0` | `0` | Heuristic overcommit (safe default) |
+| `vm.overcommit_ratio` | `95` | `50` | Allow 95% of RAM+swap |
 
 ### Network Optimization
 
@@ -261,25 +330,25 @@ Every system setting modified by this setup is documented below. Nothing is hidd
 
 | Setting | Value | Default | What It Does |
 |---------|-------|---------|-------------|
-| `net.core.default_qdisc` | `fq` | `fq_codel` | Fair Queue scheduler — required for BBR |
-| `net.ipv4.tcp_congestion_control` | `bbr` | `cubic` | Google's BBR — higher throughput, lower latency |
-| `net.core.rmem_max` | `16777216` (16 MB) | `212992` | Maximum receive socket buffer |
-| `net.core.wmem_max` | `16777216` (16 MB) | `212992` | Maximum send socket buffer |
+| `net.core.default_qdisc` | `fq` | `fq_codel` | Fair Queue — required for BBR |
+| `net.ipv4.tcp_congestion_control` | `bbr` | `cubic` | Google BBR — better throughput & latency |
+| `net.core.rmem_max` | `16777216` (16 MB) | `212992` | Max receive buffer |
+| `net.core.wmem_max` | `16777216` (16 MB) | `212992` | Max send buffer |
 | `net.core.rmem_default` | `1048576` (1 MB) | `212992` | Default receive buffer |
 | `net.core.wmem_default` | `1048576` (1 MB) | `212992` | Default send buffer |
-| `net.ipv4.tcp_rmem` | `4096 87380 16777216` | `4096 131072 6291456` | TCP receive buffer: min / default / max |
-| `net.ipv4.tcp_wmem` | `4096 65536 16777216` | `4096 16384 4194304` | TCP send buffer: min / default / max |
-| `net.ipv4.tcp_fastopen` | `3` | `1` | TCP Fast Open for client and server |
-| `net.ipv4.tcp_mtu_probing` | `1` | `0` | Auto-discover optimal MTU size |
-| `net.ipv4.tcp_slow_start_after_idle` | `0` | `1` | Don't reset congestion window after idle |
-| `net.core.netdev_max_backlog` | `16384` | `1000` | Larger network device backlog queue |
-| `net.core.somaxconn` | `8192` | `4096` | Maximum socket listen backlog |
-| `net.ipv4.tcp_max_syn_backlog` | `8192` | `1024` | Maximum SYN queue |
-| `net.ipv4.tcp_window_scaling` | `1` | `1` | TCP window scaling for high bandwidth |
+| `net.ipv4.tcp_rmem` | `4096 87380 16777216` | `4096 131072 6291456` | TCP receive: min/default/max |
+| `net.ipv4.tcp_wmem` | `4096 65536 16777216` | `4096 16384 4194304` | TCP send: min/default/max |
+| `net.ipv4.tcp_fastopen` | `3` | `1` | TCP Fast Open (client + server) |
+| `net.ipv4.tcp_mtu_probing` | `1` | `0` | Auto-discover MTU |
+| `net.ipv4.tcp_slow_start_after_idle` | `0` | `1` | Don't reset congestion window |
+| `net.core.netdev_max_backlog` | `16384` | `1000` | Larger backlog queue |
+| `net.core.somaxconn` | `8192` | `4096` | Max listen backlog |
+| `net.ipv4.tcp_max_syn_backlog` | `8192` | `1024` | Max SYN queue |
+| `net.ipv4.tcp_window_scaling` | `1` | `1` | Window scaling for high bandwidth |
 | `net.ipv4.tcp_timestamps` | `1` | `1` | Better RTT estimation |
-| `net.ipv4.tcp_sack` | `1` | `1` | Selective ACKs — faster packet loss recovery |
-| `net.ipv4.tcp_no_metrics_save` | `1` | `0` | Don't cache TCP metrics between connections |
-| `net.ipv4.tcp_tw_reuse` | `1` | `2` | Reuse TIME_WAIT sockets (less port exhaustion) |
+| `net.ipv4.tcp_sack` | `1` | `1` | Selective ACKs |
+| `net.ipv4.tcp_no_metrics_save` | `1` | `0` | Don't cache TCP metrics |
+| `net.ipv4.tcp_tw_reuse` | `1` | `2` | Reuse TIME_WAIT sockets |
 
 ### Filesystem & Kernel Tuning
 
@@ -287,50 +356,45 @@ Every system setting modified by this setup is documented below. Nothing is hidd
 
 | Setting | Value | Default | What It Does |
 |---------|-------|---------|-------------|
-| `fs.inotify.max_user_watches` | `524288` | `65536` | More inotify watches (VS Code, webpack, etc.) |
+| `fs.inotify.max_user_watches` | `524288` | `65536` | More watches (VS Code, webpack) |
 | `fs.inotify.max_user_instances` | `1024` | `128` | More inotify instances |
-| `fs.file-max` | `2097152` | `9223372036854775807` | System-wide max open files (2 million) |
-| `kernel.sysrq` | `1` | `176` | Enable all Magic SysRq key functions |
+| `fs.file-max` | `2097152` | `9223372036854775807` | 2M max open files |
+| `kernel.sysrq` | `1` | `176` | Enable all SysRq functions |
 
-### Security Settings
+### AppArmor / Edge Sandbox Fix
 
 **File:** `/etc/sysctl.d/99-edge-sandbox.conf`
 
 | Setting | Value | Default | What It Does |
 |---------|-------|---------|-------------|
-| `kernel.apparmor_restrict_unprivileged_userns` | `0` | `1` | Allow unprivileged user namespaces (required for Edge/Chromium sandbox and containers) |
+| `kernel.apparmor_restrict_unprivileged_userns` | `0` | `1` | Allow user namespaces (Edge sandbox + containers) |
 
-### Filesystem Mounts (fstab)
+**File:** `/etc/apparmor.d/microsoft-edge`
 
-| Mount | Filesystem | Options | Purpose |
-|-------|------------|---------|---------|
-| `/` | ext4 | `noatime,errors=remount-ro` | Root — `noatime` skips unnecessary disk writes |
-| `/boot/efi` | vfat | `umask=0077` | EFI boot partition |
-| `/mnt/experiments` | ntfs3 | `noatime,uid=1000,gid=1000,nofail` | Data partition — owned by first user, won't block boot if missing |
-| `/tmp` | tmpfs | `noatime,nosuid,nodev,size=4G` | RAM-backed temp dir — fast, auto-cleared on reboot |
+A custom AppArmor profile that grants Edge the `userns` permission, so it works even if the sysctl gets reverted by an Ubuntu update. This eliminates the need for `--no-sandbox`.
 
 ### User & Group Changes
 
 | Change | What It Does |
 |--------|-------------|
-| `usermod -aG docker dmj` | Run `docker` commands without `sudo` |
+| `usermod -aG docker dmj` | Run `docker` without `sudo` |
 
 ### Systemd Services
 
 | Service | What It Does |
 |---------|-------------|
-| `post-install.service` | One-shot service that runs `post-install.sh` on first boot, then disables and removes itself |
+| `post-install.service` | One-shot: runs `post-install.sh` on first boot, then self-disables and deletes the script |
 
 ### Login Banner
 
-A password-change reminder appears on every login until removed:
+Appears on every login until removed:
 ```
 ╔══════════════════════════════════════════════════════════════╗
 ║  ⚠️  DEFAULT PASSWORD IN USE — CHANGE IT NOW:               ║
 ║     sudo passwd dmj                                        ║
 ╚══════════════════════════════════════════════════════════════╝
 ```
-Remove after changing password: `sudo rm /etc/profile.d/change-password-reminder.sh`
+Remove: `sudo rm /etc/profile.d/change-password-reminder.sh`
 
 ---
 
@@ -338,11 +402,11 @@ Remove after changing password: `sudo rm /etc/profile.d/change-password-reminder
 
 ### Option A: Ventoy USB (recommended)
 
-[Ventoy](https://www.ventoy.net) lets you boot multiple ISOs from one USB and supports autoinstall natively.
+[Ventoy](https://www.ventoy.net) lets you boot multiple ISOs from one USB.
 
 1. Install Ventoy on a USB drive
 2. Download the [Ubuntu 24.04 Server ISO](https://ubuntu.com/download/server)
-3. Copy these files to the USB:
+3. Copy to USB:
 
 ```
 USB drive/
@@ -372,59 +436,40 @@ USB drive/
 
 ### Option B: Rufus USB
 
-[Rufus](https://rufus.ie) is a popular Windows tool for creating bootable USB drives.
-
-1. Download [Rufus](https://rufus.ie) and the [Ubuntu 24.04 Server ISO](https://ubuntu.com/download/server)
-2. Open Rufus, select the ISO, and flash it to your USB drive
-   - Partition scheme: **GPT**
-   - Target system: **UEFI**
-   - File system: **FAT32**
-3. After flashing, place `autoinstall.yaml` on the USB:
-   - **Root of the USB**, or create `autoinstall/` directory and place it inside as `user-data`
-4. If the USB is read-only after flashing (ISO9660):
-   - **Recommended:** Use Rufus in **DD mode** instead of ISO mode
-   - **Alternative:** Repack the ISO (see below)
-
-> **Tip:** Ventoy is generally easier because it doesn't modify the ISO.
+1. Download [Rufus](https://rufus.ie) + [Ubuntu 24.04 Server ISO](https://ubuntu.com/download/server)
+2. Flash with: **GPT** partition scheme, **UEFI** target, **FAT32**
+3. Copy `autoinstall.yaml` to the USB root
+4. If read-only after flashing: use **DD mode** or repack the ISO
 
 ### Option C: Custom ISO (advanced)
-
-Bake `autoinstall.yaml` directly into the ISO:
 
 ```bash
 mkdir /tmp/iso-extract
 7z x ubuntu-24.04-live-server-amd64.iso -o/tmp/iso-extract
 cp autoinstall.yaml /tmp/iso-extract/
-
-xorriso -as mkisofs \
-  -r -V "Ubuntu Auto" \
+xorriso -as mkisofs -r -V "Ubuntu Auto" \
   --grub2-mbr /tmp/iso-extract/boot/1-Boot-NoEmul.img \
-  -partition_offset 16 \
-  --mbr-force-bootable \
+  -partition_offset 16 --mbr-force-bootable \
   -append_partition 2 28732ac11ff8d211ba4b00a0c93ec93b \
   /tmp/iso-extract/boot/2-Boot-NoEmul.img \
   -appended_part_as_gpt \
   -iso_mbr_part_type a2a0d0ebe5b9334487c068b6b72699c7 \
-  -c '/boot.catalog' \
-  -b '/boot/1-Boot-NoEmul.img' \
+  -c '/boot.catalog' -b '/boot/1-Boot-NoEmul.img' \
   -no-emul-boot -boot-load-size 4 -boot-info-table --grub2-boot-info \
-  -eltorito-alt-boot \
-  -e '--interval:appended_partition_2:::' \
-  -no-emul-boot \
-  -o /tmp/ubuntu-24.04-autoinstall.iso \
-  /tmp/iso-extract
+  -eltorito-alt-boot -e '--interval:appended_partition_2:::' \
+  -no-emul-boot -o /tmp/ubuntu-24.04-autoinstall.iso /tmp/iso-extract
 ```
 
 ### Boot and Walk Away
 
-1. Plug in USB → Boot from it (F12/F2/Del for boot menu)
+1. Plug in USB, boot from it (F12/F2/Del for boot menu)
 2. If Ventoy, select the Ubuntu ISO
 3. Installer runs **fully unattended**
 4. System reboots when done
 
 ### Monitor Progress
 
-Post-install runs on first boot (~10–20 minutes with good internet):
+Post-install runs on first boot (~10–20 min):
 
 ```bash
 journalctl -u post-install.service -f
@@ -463,14 +508,14 @@ late-commands:
 | Want to... | Do this |
 |------------|---------|
 | Change disk sizes | Edit `size:` under `storage.config` in `autoinstall.yaml` |
-| Change username | Replace `dmj` in both `autoinstall.yaml` and `post-install.sh` |
+| Change username | Replace `dmj` in `autoinstall.yaml` and `post-install.sh` |
 | Change password | `openssl passwd -6 'newpass'` → replace hash in `autoinstall.yaml` |
 | Skip NVIDIA driver | Remove `nvidia-driver-535` from `post-install.sh` |
-| Add to base install | Add packages to `apt-get install` in `post-install.sh` |
+| Add to base install | Add to `apt-get install` block in `post-install.sh` |
 | Add desktop GUI | Add `apt-get install -y ubuntu-desktop-minimal` to `post-install.sh` |
 | Change sysctl values | Edit `cat > /etc/sysctl.d/...` blocks in `post-install.sh` |
-| Target specific disk | Change `match: size: largest` to `match: serial: YOUR_SERIAL` |
-| Fork for your use | Fork repo, update raw GitHub URL in `autoinstall.yaml` |
+| Target specific disk | `match: serial: YOUR_SERIAL` instead of `match: size: largest` |
+| Fork for your use | Fork repo, update GitHub URL in `autoinstall.yaml` late-commands |
 
 ---
 
@@ -478,11 +523,12 @@ late-commands:
 
 | Problem | Solution |
 |---------|----------|
-| Post-install didn't run | `systemctl status post-install.service` and check `/var/log/post-install.log` |
-| No internet during install | Connect Ethernet before booting. WiFi may not work during server install. |
-| Wrong disk selected | Use `match: serial: YOUR_SERIAL` instead of `match: size: largest` |
-| NVIDIA driver issues | Reboot after post-install. Check `nvidia-smi`. May need Secure Boot disabled. |
-| Experiments not mounting | `blkid` to find UUID, update `/etc/fstab` |
+| Post-install didn't run | `systemctl status post-install.service` + check `/var/log/post-install.log` |
+| No internet during install | Connect Ethernet. WiFi may not work during server install. |
+| Wrong disk selected | Use `match: serial: YOUR_SERIAL` (find with `lsblk -o NAME,SERIAL`) |
+| NVIDIA driver issues | Reboot after post-install. `nvidia-smi`. May need Secure Boot disabled. |
+| Edge crashes / needs --no-sandbox | AppArmor fix should handle this. Check `sysctl kernel.apparmor_restrict_unprivileged_userns` = 0 |
+| Experiments not mounting | `blkid` to find UUID → update `/etc/fstab` |
 | Rufus USB read-only | Use Ventoy or Rufus DD mode |
 | Autoinstall not detected | Ensure `autoinstall.yaml` is in USB root |
 | Hangs at "Continue with autoinstall?" | Normal — press Enter or wait 30s |
@@ -499,8 +545,14 @@ late-commands:
 
 ---
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+---
+
 ## License
 
-Provided as-is for personal and educational use. No warranty. Use at your own risk.
+MIT License. See [LICENSE](LICENSE).
 
 **Built for Ubuntu 24.04 LTS (Noble Numbat) on x86_64.**
