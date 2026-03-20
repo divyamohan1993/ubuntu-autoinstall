@@ -15,10 +15,28 @@ UBUNTU_CODENAME=$(lsb_release -cs)
 UBUNTU_VERSION=$(lsb_release -rs)
 HWE_KERNEL="linux-generic-hwe-${UBUNTU_VERSION}"
 
-# Auto-detect latest NVIDIA driver available
-NVIDIA_DRIVER=$(apt-cache search '^nvidia-driver-[0-9]+$' 2>/dev/null \
-  | grep -oP 'nvidia-driver-\d+' | sort -t- -k3 -n | tail -1)
-NVIDIA_DRIVER="${NVIDIA_DRIVER:-nvidia-driver-535}"
+# Auto-detect NVIDIA driver: use ubuntu-drivers to find the right version
+# Older GPUs need legacy drivers; installing the wrong one wastes 40s+ on boot probes
+NVIDIA_DRIVER=""
+NVIDIA_KERNEL_MODULES=""
+if lspci | grep -qi 'nvidia'; then
+  NVIDIA_DRIVER=$(ubuntu-drivers devices 2>/dev/null \
+    | grep -oP 'nvidia-driver-\d+(?=.*recommended)' | head -1)
+  if [ -z "$NVIDIA_DRIVER" ]; then
+    echo "WARNING: NVIDIA GPU found but no recommended driver. Skipping NVIDIA install."
+  else
+    # Prefer pre-built kernel modules over DKMS (avoids build failures on newer kernels)
+    KVER=$(uname -r)
+    DRIVER_NUM="${NVIDIA_DRIVER##*-}"
+    NVIDIA_KERNEL_MODULES=$(apt-cache search "linux-modules-nvidia-${DRIVER_NUM}-${KVER}" 2>/dev/null \
+      | grep -oP 'linux-modules-nvidia-\S+' | head -1)
+    if [ -z "$NVIDIA_KERNEL_MODULES" ]; then
+      echo "NOTE: No pre-built nvidia kernel modules for ${KVER}, will use DKMS"
+    fi
+  fi
+else
+  echo "No NVIDIA GPU detected, skipping driver install."
+fi
 
 # Auto-detect latest GCC version available
 GCC_VERSION=$(apt-cache search '^gcc-[0-9]+$' 2>/dev/null \
@@ -31,7 +49,7 @@ NVM_VERSION=$(curl -fsSL https://api.github.com/repos/nvm-sh/nvm/releases/latest
 NVM_VERSION="${NVM_VERSION:-v0.40.3}"
 
 echo "Detected: Ubuntu ${UBUNTU_VERSION} (${UBUNTU_CODENAME})"
-echo "  NVIDIA driver: ${NVIDIA_DRIVER}"
+echo "  NVIDIA driver: ${NVIDIA_DRIVER:-SKIPPED (no supported GPU)}"
 echo "  GCC version:   gcc-${GCC_VERSION}"
 echo "  nvm version:   ${NVM_VERSION}"
 
@@ -44,10 +62,12 @@ chmod a+r /etc/apt/keyrings/docker.asc
 echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu ${UBUNTU_CODENAME} stable" \
   > /etc/apt/sources.list.d/docker.list
 
-# NVIDIA (driver repo — for GPU driver, not full CUDA toolkit)
-curl -fsSL https://developer.download.nvidia.com/compute/cuda/repos/ubuntu${UBUNTU_VERSION//.}/x86_64/cuda-keyring_1.1-1_all.deb \
-  -o /tmp/cuda-keyring.deb
-dpkg -i /tmp/cuda-keyring.deb
+# NVIDIA (driver repo — only if a supported GPU was detected)
+if [ -n "$NVIDIA_DRIVER" ]; then
+  curl -fsSL https://developer.download.nvidia.com/compute/cuda/repos/ubuntu${UBUNTU_VERSION//.}/x86_64/cuda-keyring_1.1-1_all.deb \
+    -o /tmp/cuda-keyring.deb
+  dpkg -i /tmp/cuda-keyring.deb
+fi
 
 # Microsoft Edge
 curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | \
@@ -100,7 +120,8 @@ apt-get install -y \
   cmake \
   ninja-build \
   ${HWE_KERNEL} \
-  ${NVIDIA_DRIVER} \
+  ${NVIDIA_DRIVER:+$NVIDIA_DRIVER} \
+  ${NVIDIA_KERNEL_MODULES:+$NVIDIA_KERNEL_MODULES} \
   microsoft-edge-stable \
   containerd.io \
   docker-ce \
@@ -261,18 +282,13 @@ cat > /etc/systemd/logind.conf.d/fast-restart.conf << 'EOF'
 InhibitDelayMaxSec=5
 EOF
 
-# Suppress broadcast "wall" messages on shutdown/reboot
-systemctl mask systemd-ask-password-wall.path 2>/dev/null || true
-systemctl mask systemd-ask-password-wall.service 2>/dev/null || true
-
-for action in halt reboot poweroff; do
-  mkdir -p /etc/systemd/system/systemd-${action}.service.d
-  cat > /etc/systemd/system/systemd-${action}.service.d/no-wall.conf << EOF2
-[Service]
-ExecStart=
-ExecStart=/usr/lib/systemd/systemd-shutdown ${action} --no-wall
-EOF2
-done
+# Suppress broadcast "wall" messages on shutdown/reboot via logind
+# NOTE: --no-wall is NOT valid for systemd-shutdown (low-level binary).
+# Wall suppression must go through logind.conf, not ExecStart overrides.
+cat > /etc/systemd/logind.conf.d/no-wall.conf << 'EOF'
+[Login]
+WallMessage=
+EOF
 
 # Allow sudo users to reboot/shutdown without delay
 cat > /etc/polkit-1/rules.d/85-no-shutdown-delay.rules << 'POLKIT'
@@ -459,7 +475,84 @@ fi
 DISPATCH
 chmod +x /etc/NetworkManager/dispatcher.d/99-catch-up-updates
 
-# ─── 12. Done ─────────────────────────────────────────────────────────
+# ─── 12. SSD I/O optimization ──────────────────────────────────────────
+
+cat > /etc/udev/rules.d/60-ssd-scheduler.rules << 'EOF'
+ACTION=="add|change", KERNEL=="sd[a-z]", ATTR{queue/rotational}=="0", ATTR{queue/scheduler}="none"
+ACTION=="add|change", KERNEL=="sd[a-z]", ATTR{queue/rotational}=="0", ATTR{queue/read_ahead_kb}="2048"
+EOF
+
+# ─── 13. Protect UI processes from OOM killer ─────────────────────────
+
+cat > /etc/systemd/system/protect-ui.service << 'EOF'
+[Unit]
+Description=Protect UI processes from OOM killer
+After=graphical.target
+Wants=graphical.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/bash -c '\
+  sleep 10; \
+  for proc in gnome-shell gdm3 Xwayland gnome-session-b pipewire pipewire-pulse gnome-system-mo nautilus; do \
+    for pid in $(pgrep -x "$proc" 2>/dev/null); do \
+      echo -900 > /proc/$pid/oom_score_adj 2>/dev/null || true; \
+    done; \
+  done; \
+  for pid in $(pgrep -x "code" 2>/dev/null); do \
+    echo -500 > /proc/$pid/oom_score_adj 2>/dev/null || true; \
+  done; \
+  exit 0'
+
+[Install]
+WantedBy=graphical.target
+EOF
+systemctl enable protect-ui.service
+
+# ─── 14. Blacklist NVIDIA only if no compatible driver exists ───────────
+
+if [ -z "$NVIDIA_DRIVER" ] && lspci | grep -qi 'nvidia'; then
+  cat > /etc/modprobe.d/blacklist-nvidia.conf << 'EOF'
+# GPU not supported by available nvidia drivers — blacklist to prevent boot probe delays
+blacklist nvidia
+blacklist nvidia_drm
+blacklist nvidia_modeset
+blacklist nvidia_uvm
+EOF
+  update-initramfs -u
+fi
+
+# ─── 15. Boot diagnostics tool ────────────────────────────────────────
+
+cat > /usr/local/bin/boot-diag << 'SCRIPT'
+#!/bin/bash
+OUT="/tmp/boot-diag-$(date +%Y%m%d-%H%M%S).log"
+BOOT="-b 0"
+[[ "$1" == "--previous" || "$1" == "-p" ]] && BOOT="-b -1"
+{
+echo "══ BOOT DIAGNOSTICS — $(date) ══"
+echo -e "\n── Boot timing ──"
+systemd-analyze 2>&1
+systemd-analyze blame 2>&1 | head -20
+echo -e "\n── Critical chain ──"
+systemd-analyze critical-chain 2>&1 | head -30
+echo -e "\n── Failed units ──"
+systemctl --failed 2>&1
+echo -e "\n── Boot errors ──"
+journalctl $BOOT -p err --no-pager 2>&1
+echo -e "\n── Shutdown errors (previous boot) ──"
+journalctl -b -1 -p err --no-pager 2>&1 | tail -30
+echo -e "\n── Active inhibitors ──"
+systemd-inhibit --list 2>&1
+echo -e "\n── Pending jobs ──"
+systemctl list-jobs 2>&1
+} > "$OUT" 2>&1
+echo "Saved to: $OUT"
+SCRIPT
+chmod +x /usr/local/bin/boot-diag
+
+# ─── 16. Done ─────────────────────────────────────────────────────────
 
 echo "=== Post-install completed at $(date) ==="
 echo "=== REBOOT RECOMMENDED ==="
