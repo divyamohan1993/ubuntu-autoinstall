@@ -275,7 +275,7 @@ show_menu() {
   echo -e "${BOLD}${CYAN}"
   echo "  ┌──────────────────────────────────────────────┐"
   echo "  │       On-Demand Package Installer            │"
-  echo "  │       Ubuntu 24.04 LTS                       │"
+  echo "  │       Ubuntu ${UBUNTU_VERSION} LTS                       │"
   echo "  └──────────────────────────────────────────────┘"
   echo -e "${NC}"
   echo -e "  ${DIM}Select categories to install (space-separated numbers)${NC}"

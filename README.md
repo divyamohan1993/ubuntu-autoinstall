@@ -55,7 +55,7 @@ In one unattended installation, this setup:
 
 ### Philosophy: Always Latest
 
-Nothing is hardcoded to a specific version. At install time, the script auto-detects:
+All versions are **auto-detected at runtime**. Fallbacks exist only if auto-detection fails (e.g., no internet during detection). At install time, the script auto-detects:
 - **NVIDIA driver** — picks the highest numbered driver in apt
 - **GCC** — picks the latest major version available
 - **nvm** — fetches the latest release tag from GitHub API
@@ -163,6 +163,11 @@ Additional mounts in `/etc/fstab`:
 |---------|-----------|
 | `microsoft-edge-stable` | Microsoft Edge (replaces Firefox) |
 
+#### System packages
+| Package | What It Is |
+|---------|-----------|
+| `anacron` | Runs missed cron jobs after boot (for catch-up updates) |
+
 #### Snap packages
 | Package | What It Is |
 |---------|-----------|
@@ -206,7 +211,7 @@ Claude Code is pre-configured with:
 |---------|------------|
 | `libreoffice-*` | Office suite (available on-demand as `office`) |
 | `thunderbird` | Email client (available on-demand as `email`) |
-| `aisleriot`, `gnome-mahjongg`, `gnome-mines`, `gnome-sudoku` | Games |
+| `gnome-games`, `aisleriot`, `gnome-mahjongg`, `gnome-mines`, `gnome-sudoku` | Games |
 | `rhythmbox` | Music player (available on-demand as `media`) |
 | `shotwell` | Photo manager (available on-demand as `photo`) |
 | `cheese` | Webcam app (available on-demand as `photo`) |
@@ -425,6 +430,11 @@ Every system setting modified by this setup is documented below. Nothing is hidd
 | `fs.inotify.max_user_watches` | `524288` | `65536` | More watches (VS Code, webpack) |
 | `fs.inotify.max_user_instances` | `1024` | `128` | More inotify instances |
 | `fs.file-max` | `2097152` | `9223372036854775807` | 2M max open files |
+
+**File:** `/etc/sysctl.d/99-ml-performance.conf`
+
+| Setting | Value | Default | What It Does |
+|---------|-------|---------|-------------|
 | `kernel.sysrq` | `1` | `176` | Enable all SysRq functions |
 
 ### AppArmor / Edge Sandbox Fix

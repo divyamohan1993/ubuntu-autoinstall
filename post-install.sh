@@ -247,29 +247,30 @@ sudo -u dmj dbus-launch gsettings set org.gnome.SessionManager logout-prompt fal
 
 usermod -aG docker dmj || true
 
-# ─── 6. Install VS Code via snap ─────────────────────────────────────
+# ─── 7. Install VS Code via snap ─────────────────────────────────────
 
 snap install code --classic
 
-# ─── 7. Install Node.js (via nvm) + Claude Code ──────────────────────
+# ─── 8. Install Node.js (via nvm) + Claude Code ──────────────────────
 
 if [ ! -d /home/dmj/.nvm ]; then
-  sudo -u dmj bash -c '
+  export NVM_VERSION
+  sudo -u dmj -E bash -c "
     curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_VERSION}/install.sh | bash
-    export NVM_DIR="$HOME/.nvm"
-    [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+    export NVM_DIR=\"\$HOME/.nvm\"
+    [ -s \"\$NVM_DIR/nvm.sh\" ] && . \"\$NVM_DIR/nvm.sh\"
     nvm install node
     npm install -g @anthropic-ai/claude-code
-  '
+  "
 fi
 
-# ─── 8. Install Claude Code VS Code extension ────────────────────────
+# ─── 9. Install Claude Code VS Code extension ────────────────────────
 
 sudo -u dmj bash -c '
   code --install-extension anthropic.claude-code 2>/dev/null || true
 '
 
-# ─── 9. Configure Claude Code: agent teams, plugins, marketplace ─────
+# ─── 10. Configure Claude Code: agent teams, plugins, marketplace ────
 
 sudo -u dmj mkdir -p /home/dmj/.claude
 sudo -u dmj tee /home/dmj/.claude/settings.json > /dev/null << 'CLAUDE_SETTINGS'
@@ -302,7 +303,7 @@ sudo -u dmj tee /home/dmj/.claude/settings.json > /dev/null << 'CLAUDE_SETTINGS'
 }
 CLAUDE_SETTINGS
 
-# ─── 10. Configure aggressive auto-updates (ALL packages, ALL repos) ─
+# ─── 11. Configure aggressive auto-updates (ALL packages, ALL repos) ─
 
 # APT auto-updates: check daily, install everything
 cat > /etc/apt/apt.conf.d/20auto-upgrades << 'APTCONF'
@@ -403,7 +404,7 @@ fi
 DISPATCH
 chmod +x /etc/NetworkManager/dispatcher.d/99-catch-up-updates
 
-# ─── 11. Done ─────────────────────────────────────────────────────────
+# ─── 12. Done ─────────────────────────────────────────────────────────
 
 echo "=== Post-install completed at $(date) ==="
 echo "=== REBOOT RECOMMENDED ==="
