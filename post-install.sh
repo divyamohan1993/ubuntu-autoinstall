@@ -203,7 +203,12 @@ APPARMOR
   systemctl reload apparmor 2>/dev/null || true
 fi
 
-# ─── 5. Add user to docker group ─────────────────────────────────────
+# ─── 5. GNOME tweaks ──────────────────────────────────────────────────
+
+# Disable the 60-second shutdown confirmation dialog — shuts down immediately
+sudo -u dmj dbus-launch gsettings set org.gnome.SessionManager logout-prompt false 2>/dev/null || true
+
+# ─── 6. Add user to docker group ─────────────────────────────────────
 
 usermod -aG docker dmj || true
 
