@@ -152,6 +152,9 @@ apt-get remove -y --purge \
 # Clean up orphaned dependencies
 apt-get autoremove -y --purge
 
+# Re-install packages that autoremove may have pulled out via metapackage deps
+apt-get install -y --no-install-recommends gnome-control-center update-manager 2>/dev/null || true
+
 # ─── 3. Sysctl optimizations ─────────────────────────────────────────
 
 cat > /etc/sysctl.d/99-ml-performance.conf << 'SYSCTL'
