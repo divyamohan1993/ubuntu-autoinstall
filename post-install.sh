@@ -779,10 +779,10 @@ echo "=== Post-install completed at $(date) ==="
 # Remind user to change password on next login
 cat > /etc/profile.d/change-password-reminder.sh << 'REMIND'
 echo ""
-echo "╔══════════════════════════════════════════════════════════════╗"
-echo "║  ⚠️  DEFAULT PASSWORD IN USE — CHANGE IT NOW:               ║"
-echo "║     sudo passwd dmj                                        ║"
-echo "╚══════════════════════════════════════════════════════════════╝"
+echo "╔═══════════════════════════════════════════════╗"
+echo "║  ⚠️  DEFAULT PASSWORD IN USE — CHANGE IT NOW: ║"
+echo "║                sudo passwd dmj                ║"
+echo "╚═══════════════════════════════════════════════╝"
 echo ""
 REMIND
 
