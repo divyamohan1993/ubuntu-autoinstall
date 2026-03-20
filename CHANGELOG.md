@@ -75,7 +75,7 @@ All notable changes to this project are documented here.
 #### System tuning
 - Memory: swappiness=1, BBR congestion control, 16MB socket buffers
 - Network: TCP Fast Open, MTU probing, window scaling, SACK
-- Filesystem: 524K inotify watches, 2M max open files
+- Filesystem: 524,288 inotify watches, 2M max open files
 - AppArmor: unprivileged userns allowed for containers/browsers
 
 #### On-demand installer

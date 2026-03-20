@@ -26,6 +26,9 @@ This autoinstall configuration makes the following security-relevant changes:
 3. **Creates a custom AppArmor profile for Edge** — grants `userns` permission to the Edge binary
 4. **Adds user to docker group** — effectively grants root-equivalent access to the `dmj` user via Docker
 5. **Sets `vm.overcommit_memory = 1`** (in ml-performance config) — allows overcommitting memory, which is overridden to `0` by the performance config
+6. **Configures aggressive auto-updates from ALL repos** — packages update automatically including third-party sources (Docker, NVIDIA, Edge, etc.)
+7. **Auto-reboots at 4 AM** if a kernel or driver update requires it — could interrupt overnight processes
+8. **Installs latest versions of everything** regardless of stability — bleeding-edge gcc, NVIDIA drivers, Node.js, etc. may introduce regressions
 
 All changes are fully documented in the [README](README.md#system-settings-changed).
 
@@ -44,3 +47,5 @@ If you adapt this for production or shared systems:
 3. Remove the user from the docker group → use `sudo` for Docker
 4. Review all sysctl settings against your security requirements
 5. Consider re-enabling `kernel.apparmor_restrict_unprivileged_userns = 1` if you don't use Edge
+6. Disable auto-reboot: set `Automatic-Reboot "false"` in `/etc/apt/apt.conf.d/50unattended-upgrades`
+7. Pin stable package versions instead of always-latest if reliability matters
