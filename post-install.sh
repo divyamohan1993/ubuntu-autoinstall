@@ -302,7 +302,62 @@ sudo -u dmj tee /home/dmj/.claude/settings.json > /dev/null << 'CLAUDE_SETTINGS'
 }
 CLAUDE_SETTINGS
 
-# ─── 10. Done ─────────────────────────────────────────────────────────
+# ─── 10. Configure aggressive auto-updates (ALL packages, ALL repos) ─
+
+# APT auto-updates: check daily, install everything
+cat > /etc/apt/apt.conf.d/20auto-upgrades << 'APTCONF'
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Download-Upgradeable-Packages "1";
+APT::Periodic::Unattended-Upgrade "1";
+APT::Periodic::AutocleanInterval "7";
+APTCONF
+
+cat > /etc/apt/apt.conf.d/50unattended-upgrades << 'APTCONF'
+Unattended-Upgrade::Allowed-Origins {
+    "${distro_id}:${distro_codename}";
+    "${distro_id}:${distro_codename}-security";
+    "${distro_id}:${distro_codename}-updates";
+    "${distro_id}:${distro_codename}-backports";
+    "${distro_id}ESMApps:${distro_codename}-apps-security";
+    "${distro_id}ESM:${distro_codename}-infra-security";
+    "*:*";
+};
+
+Unattended-Upgrade::Origins-Pattern {
+    "origin=*";
+};
+
+Unattended-Upgrade::Remove-Unused-Dependencies "true";
+Unattended-Upgrade::Remove-New-Unused-Dependencies "true";
+Unattended-Upgrade::Automatic-Reboot "true";
+Unattended-Upgrade::Automatic-Reboot-Time "04:00";
+
+Dpkg::Options {
+    "--force-confdef";
+    "--force-confold";
+};
+APTCONF
+
+systemctl enable unattended-upgrades
+systemctl restart unattended-upgrades
+
+# Snap auto-refresh: twice daily
+snap set system refresh.timer=00:00~04:00/2
+
+# Daily cron: auto-update Node.js to latest + npm globals (Claude Code etc.)
+cat > /etc/cron.daily/update-node-and-npm << 'CRON'
+#!/bin/bash
+export HOME=/home/dmj
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+nvm install node --reinstall-packages-from=current >> /var/log/node-auto-update.log 2>&1
+nvm alias default node >> /var/log/node-auto-update.log 2>&1
+npm update -g >> /var/log/node-auto-update.log 2>&1
+echo "$(date): Node $(node --version), npm $(npm --version)" >> /var/log/node-auto-update.log
+CRON
+chmod +x /etc/cron.daily/update-node-and-npm
+
+# ─── 11. Done ─────────────────────────────────────────────────────────
 
 echo "=== Post-install completed at $(date) ==="
 echo "=== REBOOT RECOMMENDED ==="
