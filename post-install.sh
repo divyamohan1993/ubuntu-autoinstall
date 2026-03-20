@@ -115,8 +115,6 @@ apt-get remove -y --purge \
   speech-dispatcher \
   orca \
   gnome-accessibility-themes \
-  gnome-software \
-  software-properties-gtk \
   update-manager \
   language-selector-gnome \
   power-profiles-daemon \
