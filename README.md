@@ -232,6 +232,17 @@ The post-install script adds these third-party repositories:
 - Latest **LTS version** of Node.js is installed and set as default
 - Available immediately on login via `~/.nvm/nvm.sh`
 
+### Claude Code (AI coding assistant)
+
+| Tool | Install Method | What It Is |
+|------|---------------|-----------|
+| `@anthropic-ai/claude-code` | npm (global) | Claude Code CLI — Anthropic's official AI coding agent for the terminal |
+| `anthropic.claude-code` | VS Code extension | Claude Code extension for VS Code — AI pair programming inside the editor |
+
+- **CLI usage:** Run `claude` in any terminal after installation
+- **VS Code:** The extension appears in the sidebar after opening VS Code
+- **API key required:** Set your Anthropic API key on first use: `export ANTHROPIC_API_KEY=sk-...` or log in via `claude` CLI
+
 ---
 
 ## System Settings Changed

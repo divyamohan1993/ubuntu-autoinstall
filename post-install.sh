@@ -200,10 +200,18 @@ if [ ! -d /home/dmj/.nvm ]; then
     export NVM_DIR="$HOME/.nvm"
     [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
     nvm install --lts
+    npm install -g @anthropic-ai/claude-code
   '
 fi
 
-# ─── 8. Done ──────────────────────────────────────────────────────────
+# ─── 8. Install Claude Code VS Code extension ────────────────────────
+
+# Install the official Claude extension from VS Code marketplace
+sudo -u dmj bash -c '
+  code --install-extension anthropic.claude-code 2>/dev/null || true
+'
+
+# ─── 9. Done ──────────────────────────────────────────────────────────
 
 echo "=== Post-install completed at $(date) ==="
 echo "=== REBOOT RECOMMENDED ==="
