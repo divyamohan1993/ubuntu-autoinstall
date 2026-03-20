@@ -482,19 +482,18 @@ ACTION=="add|change", KERNEL=="sd[a-z]", ATTR{queue/rotational}=="0", ATTR{queue
 ACTION=="add|change", KERNEL=="sd[a-z]", ATTR{queue/rotational}=="0", ATTR{queue/read_ahead_kb}="2048"
 EOF
 
-# ─── 13. Protect UI processes from OOM killer ─────────────────────────
+# ─── 13. Protect UI processes from OOM killer (timer-based) ───────────
+# Timer-based so it doesn't block boot — runs 15s after graphical.target
 
 cat > /etc/systemd/system/protect-ui.service << 'EOF'
 [Unit]
 Description=Protect UI processes from OOM killer
 After=graphical.target
-Wants=graphical.target
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
 ExecStart=/bin/bash -c '\
-  sleep 10; \
   for proc in gnome-shell gdm3 Xwayland gnome-session-b pipewire pipewire-pulse gnome-system-mo nautilus; do \
     for pid in $(pgrep -x "$proc" 2>/dev/null); do \
       echo -900 > /proc/$pid/oom_score_adj 2>/dev/null || true; \
@@ -508,7 +507,35 @@ ExecStart=/bin/bash -c '\
 [Install]
 WantedBy=graphical.target
 EOF
-systemctl enable protect-ui.service
+
+cat > /etc/systemd/system/protect-ui.timer << 'EOF'
+[Unit]
+Description=Delay protect-ui until after desktop is ready
+
+[Timer]
+OnActiveSec=15
+Unit=protect-ui.service
+
+[Install]
+WantedBy=graphical.target
+EOF
+
+systemctl enable protect-ui.timer
+
+# ─── 13b. Fast boot: disable services that block the critical chain ───
+
+# plymouth-quit-wait blocks multi-user.target for 20s+ waiting for splash to finish
+systemctl mask plymouth-quit-wait.service 2>/dev/null || true
+
+# NetworkManager-wait-online blocks boot waiting for full connectivity — not needed for desktop
+systemctl disable NetworkManager-wait-online.service 2>/dev/null || true
+
+# Disable NVIDIA HDA audio on dGPU (causes D3cold power state errors, no audio output on 940MX etc.)
+if lspci | grep -qi 'nvidia.*audio'; then
+  cat > /etc/udev/rules.d/99-nvidia-hda-disable.rules << 'EOF'
+SUBSYSTEM=="pci", ATTR{vendor}=="0x10de", ATTR{class}=="0x040300", ATTR{remove}="1"
+EOF
+fi
 
 # ─── 14. Blacklist NVIDIA only if no compatible driver exists ───────────
 
