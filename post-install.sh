@@ -16,6 +16,7 @@ UBUNTU_VERSION=$(lsb_release -rs)               # e.g. 24.04, 26.04
 NVIDIA_DRIVER="nvidia-driver-535"               # Change to latest supported driver
 HWE_KERNEL="linux-generic-hwe-${UBUNTU_VERSION}" # Auto-derives from version
 NVM_VERSION="v0.40.3"                           # Check https://github.com/nvm-sh/nvm/releases
+GCC_VERSION="14"                                # Latest GCC major version
 
 echo "Detected: Ubuntu ${UBUNTU_VERSION} (${UBUNTU_CODENAME})"
 
@@ -48,6 +49,12 @@ echo "deb [signed-by=/etc/apt/keyrings/gierens.gpg] http://deb.gierens.de stable
 # Git PPA (latest git)
 add-apt-repository -y ppa:git-core/ppa
 
+# Kitware (latest CMake)
+curl -fsSL https://apt.kitware.com/keys/kitware-archive-latest.asc | \
+  gpg --dearmor -o /usr/share/keyrings/kitware-archive-keyring.gpg
+echo "deb [signed-by=/usr/share/keyrings/kitware-archive-keyring.gpg] https://apt.kitware.com/ubuntu/ ${UBUNTU_CODENAME} main" \
+  > /etc/apt/sources.list.d/kitware.list
+
 # ─── 2. Install essential packages only ───────────────────────────────
 
 apt-get update
@@ -69,6 +76,8 @@ apt-get install -y \
   python3-venv \
   ntfs-3g \
   build-essential \
+  gcc-${GCC_VERSION} \
+  g++-${GCC_VERSION} \
   cmake \
   ninja-build \
   ${HWE_KERNEL} \
@@ -79,6 +88,10 @@ apt-get install -y \
   docker-ce-cli \
   docker-buildx-plugin \
   docker-compose-plugin
+
+# Set latest gcc/g++ as default
+update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-${GCC_VERSION} 100 \
+  --slave /usr/bin/g++ g++ /usr/bin/g++-${GCC_VERSION}
 
 # ─── 2b. Remove bloatware ──────────────────────────────────────────────
 
