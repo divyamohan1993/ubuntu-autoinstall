@@ -145,7 +145,6 @@ apt-get remove -y --purge \
   brltty \
   orca \
   gnome-accessibility-themes \
-  update-manager \
   language-selector-gnome \
   yelp \
   2>/dev/null || true
