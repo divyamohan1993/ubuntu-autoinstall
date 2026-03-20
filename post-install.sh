@@ -619,7 +619,121 @@ echo "Saved to: $OUT"
 SCRIPT
 chmod +x /usr/local/bin/boot-diag
 
-# ─── 16. Done ─────────────────────────────────────────────────────────
+# ─── 16. Boot Guardian — self-healing boot performance monitor ────────
+# Runs 90s after every boot. If userspace boot > 7s, auto-fixes known issues.
+# Log: /var/log/boot-guardian.log
+
+cat > /usr/local/bin/boot-guardian << 'GUARDIAN'
+#!/bin/bash
+set -euo pipefail
+LOG="/var/log/boot-guardian.log"
+BENCHMARK_SEC=7
+TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+log() { echo "[$TIMESTAMP] $*" >> "$LOG"; }
+
+BOOT_TIME=$(systemd-analyze 2>/dev/null | grep -oP '[\d.]+s \(userspace\)' | grep -oP '[\d.]+' || echo "0")
+BOOT_SEC=${BOOT_TIME%.*}
+log "Boot time: ${BOOT_TIME}s userspace (benchmark: ${BENCHMARK_SEC}s)"
+
+if (( BOOT_SEC <= BENCHMARK_SEC )); then
+  log "OK — within benchmark"
+  exit 0
+fi
+
+log "SLOW BOOT DETECTED (${BOOT_TIME}s > ${BENCHMARK_SEC}s) — running auto-fix"
+FIXES=0
+
+# plymouth-quit-wait (20s+ blocker)
+if systemctl is-enabled plymouth-quit-wait.service 2>/dev/null | grep -q enabled; then
+  systemctl mask plymouth-quit-wait.service 2>/dev/null
+  log "FIX: Masked plymouth-quit-wait.service"; ((FIXES++))
+fi
+
+# NetworkManager-wait-online (7s+ blocker)
+if systemctl is-enabled NetworkManager-wait-online.service 2>/dev/null | grep -q enabled; then
+  systemctl disable NetworkManager-wait-online.service 2>/dev/null
+  log "FIX: Disabled NetworkManager-wait-online.service"; ((FIXES++))
+fi
+
+# protect-ui should be timer, not service
+if systemctl is-enabled protect-ui.service 2>/dev/null | grep -q enabled; then
+  if ! systemctl is-enabled protect-ui.timer 2>/dev/null | grep -q enabled; then
+    systemctl disable protect-ui.service 2>/dev/null
+    systemctl enable protect-ui.timer 2>/dev/null
+    log "FIX: Switched protect-ui from service to timer"; ((FIXES++))
+  fi
+fi
+
+# catch-up-updates should be timer, not service
+if systemctl is-enabled catch-up-updates.service 2>/dev/null | grep -q enabled; then
+  systemctl disable catch-up-updates.service 2>/dev/null
+  systemctl enable catch-up-updates.timer 2>/dev/null
+  log "FIX: Switched catch-up-updates from service to timer"; ((FIXES++))
+fi
+
+# Databases should not auto-start
+for svc in postgresql.service postgresql@16-main.service mongod.service redis-server.service; do
+  if systemctl is-enabled "$svc" 2>/dev/null | grep -q enabled; then
+    systemctl disable "$svc" 2>/dev/null
+    log "FIX: Disabled $svc from boot"; ((FIXES++))
+  fi
+done
+
+# Docker should be socket-activated
+if systemctl is-enabled docker.service 2>/dev/null | grep -q enabled; then
+  systemctl disable docker.service 2>/dev/null
+  systemctl enable docker.socket 2>/dev/null
+  log "FIX: Switched docker to socket activation"; ((FIXES++))
+fi
+
+# Shutdown timeout
+if [ ! -f /etc/systemd/system.conf.d/fast-shutdown.conf ]; then
+  mkdir -p /etc/systemd/system.conf.d
+  printf '[Manager]\nDefaultTimeoutStopSec=10s\n' > /etc/systemd/system.conf.d/fast-shutdown.conf
+  log "FIX: Set DefaultTimeoutStopSec=10s"; ((FIXES++))
+fi
+
+# Flag unknown slow services for manual review
+KNOWN="snapd|NetworkManager|gpu-manager|nvidia|udisks2|accounts-daemon"
+SLOW=$(systemd-analyze blame 2>/dev/null | awk '$1+0 > 3.0 {print $2}' | grep -vE "$KNOWN" || true)
+if [ -n "$SLOW" ]; then
+  log "WARNING: Unknown slow services (>3s): $SLOW"
+fi
+
+if (( FIXES > 0 )); then
+  log "Applied $FIXES fix(es). Improvements take effect on next boot."
+else
+  log "No automatic fixes available. Top services:"
+  systemd-analyze blame 2>/dev/null | head -5 >> "$LOG"
+fi
+GUARDIAN
+chmod +x /usr/local/bin/boot-guardian
+
+cat > /etc/systemd/system/boot-guardian.service << 'EOF'
+[Unit]
+Description=Boot Guardian — auto-fix slow boot
+After=graphical.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/boot-guardian
+EOF
+
+cat > /etc/systemd/system/boot-guardian.timer << 'EOF'
+[Unit]
+Description=Run boot guardian 90s after boot
+
+[Timer]
+OnBootSec=90
+Unit=boot-guardian.service
+
+[Install]
+WantedBy=timers.target
+EOF
+
+systemctl enable boot-guardian.timer
+
+# ─── 17. Done ─────────────────────────────────────────────────────────
 
 echo "=== Post-install completed at $(date) ==="
 echo "=== REBOOT RECOMMENDED ==="
