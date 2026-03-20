@@ -10,15 +10,30 @@ echo "=== Post-install started at $(date) ==="
 
 export DEBIAN_FRONTEND=noninteractive
 
-# ─── Version-specific config (update these for new Ubuntu releases) ───
-UBUNTU_CODENAME=$(lsb_release -cs)              # e.g. noble (24.04), oracular (26.04)
-UBUNTU_VERSION=$(lsb_release -rs)               # e.g. 24.04, 26.04
-NVIDIA_DRIVER="nvidia-driver-535"               # Change to latest supported driver
-HWE_KERNEL="linux-generic-hwe-${UBUNTU_VERSION}" # Auto-derives from version
-NVM_VERSION="v0.40.3"                           # Check https://github.com/nvm-sh/nvm/releases
-GCC_VERSION="14"                                # Latest GCC major version
+# ─── Auto-detect latest versions of everything ───────────────────────
+UBUNTU_CODENAME=$(lsb_release -cs)
+UBUNTU_VERSION=$(lsb_release -rs)
+HWE_KERNEL="linux-generic-hwe-${UBUNTU_VERSION}"
+
+# Auto-detect latest NVIDIA driver available
+NVIDIA_DRIVER=$(apt-cache search '^nvidia-driver-[0-9]+$' 2>/dev/null \
+  | grep -oP 'nvidia-driver-\d+' | sort -t- -k3 -n | tail -1)
+NVIDIA_DRIVER="${NVIDIA_DRIVER:-nvidia-driver-535}"
+
+# Auto-detect latest GCC version available
+GCC_VERSION=$(apt-cache search '^gcc-[0-9]+$' 2>/dev/null \
+  | grep -oP 'gcc-\K\d+' | sort -n | tail -1)
+GCC_VERSION="${GCC_VERSION:-14}"
+
+# Auto-detect latest nvm release from GitHub
+NVM_VERSION=$(curl -fsSL https://api.github.com/repos/nvm-sh/nvm/releases/latest 2>/dev/null \
+  | grep -oP '"tag_name":\s*"\K[^"]+')
+NVM_VERSION="${NVM_VERSION:-v0.40.3}"
 
 echo "Detected: Ubuntu ${UBUNTU_VERSION} (${UBUNTU_CODENAME})"
+echo "  NVIDIA driver: ${NVIDIA_DRIVER}"
+echo "  GCC version:   gcc-${GCC_VERSION}"
+echo "  nvm version:   ${NVM_VERSION}"
 
 # ─── 1. Add external APT repositories ────────────────────────────────
 
@@ -49,15 +64,19 @@ echo "deb [signed-by=/etc/apt/keyrings/gierens.gpg] http://deb.gierens.de stable
 # Git PPA (latest git)
 add-apt-repository -y ppa:git-core/ppa
 
+# Ubuntu Toolchain PPA (latest gcc/g++)
+add-apt-repository -y ppa:ubuntu-toolchain-r/test
+
 # Kitware (latest CMake)
 curl -fsSL https://apt.kitware.com/keys/kitware-archive-latest.asc | \
   gpg --dearmor -o /usr/share/keyrings/kitware-archive-keyring.gpg
 echo "deb [signed-by=/usr/share/keyrings/kitware-archive-keyring.gpg] https://apt.kitware.com/ubuntu/ ${UBUNTU_CODENAME} main" \
   > /etc/apt/sources.list.d/kitware.list
 
-# ─── 2. Install essential packages only ───────────────────────────────
+# ─── 2. Upgrade everything to latest, then install ────────────────────
 
 apt-get update
+apt-get dist-upgrade -y
 
 apt-get install -y \
   curl \
@@ -239,7 +258,7 @@ if [ ! -d /home/dmj/.nvm ]; then
     curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_VERSION}/install.sh | bash
     export NVM_DIR="$HOME/.nvm"
     [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-    nvm install --lts
+    nvm install node
     npm install -g @anthropic-ai/claude-code
   '
 fi
