@@ -1,6 +1,6 @@
 # Ubuntu 24.04 LTS — Automated System Setup
 
-Lean, automated Ubuntu 24.04 installation — drivers, Docker, Edge, core CLI tools, VS Code, Claude Code, and performance-tuned kernel settings. Bloatware removed. Everything else available on-demand via an interactive installer.
+Lean, automated Ubuntu 24.04+ installation — always the **latest versions** of everything, auto-detected at install time. Drivers, Docker, Edge, build tools (gcc, cmake), CLI tools, VS Code, Claude Code, and performance-tuned kernel. Bloatware removed. Aggressive auto-updates keep everything current after install. Future-proofed for Ubuntu 26.04 LTS.
 
 > **⚠️ SECURITY NOTICE:** Default credentials are **`dmj` / `dmj`** (intentionally public for quick setup).
 > **Change your password immediately** after installation: `sudo passwd dmj`
@@ -16,6 +16,7 @@ Lean, automated Ubuntu 24.04 installation — drivers, Docker, Edge, core CLI to
 - [What Gets Removed](#what-gets-removed)
 - [What Gets Kept (Ubuntu defaults)](#what-gets-kept-ubuntu-defaults)
 - [On-Demand Packages](#on-demand-packages)
+- [Auto-Updates](#auto-updates)
 - [System Settings Changed](#system-settings-changed)
 - [How to Use](#how-to-use)
 - [How the Auto-Fetch Works](#how-the-auto-fetch-works)
@@ -35,17 +36,32 @@ In one unattended installation, this setup:
 2. **Installs Ubuntu 24.04 LTS** with SSH server enabled
 3. **Fetches the post-install script from this GitHub repo** (no extra files needed on USB)
 4. **On first boot**, automatically:
-   - Installs drivers (NVIDIA GPU + HWE kernel)
+   - Auto-detects and installs the **latest** NVIDIA GPU driver + HWE kernel
    - Sets up Docker (Engine, CLI, Compose, Buildx)
-   - Installs Microsoft Edge (replaces Firefox)
+   - Installs Microsoft Edge (replaces Firefox) + AppArmor sandbox fix
+   - Installs **latest** gcc/g++ (from Ubuntu Toolchain PPA) + CMake (from Kitware repo) + Ninja
    - Installs core CLI tools (ripgrep, fzf, bat, eza, git-delta, etc.)
-   - Installs VS Code, Node.js (LTS), and Claude Code (CLI + extension)
-   - Configures AppArmor so Edge runs without `--no-sandbox`
+   - Installs VS Code, **latest** Node.js (via nvm), and Claude Code (CLI + extension)
+   - Configures Claude Code: agent teams, 12 official plugins, marketplace
    - Removes bloatware (LibreOffice, Thunderbird, games, etc.)
+   - Runs `apt dist-upgrade` to pull all latest package versions
    - Applies kernel/network/memory performance optimizations
+   - Disables 60-second shutdown confirmation dialog
+   - Configures **aggressive auto-updates** for all packages from all repos
+   - Sets up catch-up updates on boot and network reconnect
    - Shows a password-change reminder on every login
 
 **Everything else** (databases, CUDA toolkit, ML libraries, R, Terraform, office apps, etc.) can be added via the **interactive on-demand installer**.
+
+### Philosophy: Always Latest
+
+Nothing is hardcoded to a specific version. At install time, the script auto-detects:
+- **NVIDIA driver** — picks the highest numbered driver in apt
+- **GCC** — picks the latest major version available
+- **nvm** — fetches the latest release tag from GitHub API
+- **Node.js** — installs latest (not LTS)
+- **CMake** — from Kitware's repo (always ahead of Ubuntu's)
+- **Everything else** — `apt dist-upgrade` before install ensures all packages are newest
 
 ---
 
@@ -107,8 +123,16 @@ Additional mounts in `/etc/fstab`:
 #### Drivers & Kernel
 | Package | What It Is |
 |---------|-----------|
-| `nvidia-driver-535` | NVIDIA GPU driver |
-| `linux-generic-hwe-24.04` | Hardware Enablement kernel |
+| `nvidia-driver-*` | **Latest** NVIDIA GPU driver (auto-detected) |
+| `linux-generic-hwe-*` | Hardware Enablement kernel (auto-derived from Ubuntu version) |
+
+#### Build Tools (C/C++)
+| Package | What It Is |
+|---------|-----------|
+| `build-essential` | gcc, g++, make, libc headers |
+| `gcc-*` / `g++-*` | **Latest** GCC/G++ (auto-detected, set as default via update-alternatives) |
+| `cmake` | **Latest** CMake (from Kitware repo) |
+| `ninja-build` | Fast parallel build system |
 
 #### Docker
 | Package | What It Is |
@@ -122,7 +146,7 @@ Additional mounts in `/etc/fstab`:
 #### CLI Tools
 | Package | What It Is |
 |---------|-----------|
-| `git` | Latest from PPA |
+| `git` | **Latest** from PPA |
 | `git-delta` | Beautiful git diffs |
 | `ripgrep` | Fast grep (`rg`) |
 | `fzf` | Fuzzy finder |
@@ -147,10 +171,15 @@ Additional mounts in `/etc/fstab`:
 #### Node.js + Claude Code
 | Tool | Install Method | What It Is |
 |------|---------------|-----------|
-| **nvm** v0.40.3 | curl script | Node Version Manager |
-| **Node.js LTS** | nvm | JavaScript runtime |
+| **nvm** (latest) | curl script, version auto-fetched from GitHub API | Node Version Manager |
+| **Node.js** (latest, not LTS) | `nvm install node` | JavaScript runtime |
 | **`@anthropic-ai/claude-code`** | npm (global) | Claude Code CLI — AI coding agent |
 | **`anthropic.claude-code`** | VS Code extension | Claude Code for VS Code |
+
+Claude Code is pre-configured with:
+- Agent teams enabled (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`)
+- Official plugin marketplace (`anthropics/claude-plugins-official`)
+- 12 plugins pre-enabled (code-review, github, playwright, security-guidance, etc.)
 
 #### External APT Repositories added
 | Repository | What It Provides |
@@ -158,6 +187,8 @@ Additional mounts in `/etc/fstab`:
 | **Docker CE** (`download.docker.com`) | Docker Engine, CLI, Compose, Buildx |
 | **NVIDIA** (`developer.download.nvidia.com`) | GPU driver |
 | **Microsoft Edge** (`packages.microsoft.com`) | Edge browser |
+| **Kitware** (`apt.kitware.com`) | Latest CMake |
+| **Ubuntu Toolchain PPA** (`ppa:ubuntu-toolchain-r/test`) | Latest GCC/G++ |
 | **eza** (`deb.gierens.de`) | Modern `ls` |
 | **Git PPA** (`ppa:git-core/ppa`) | Latest Git |
 
@@ -294,6 +325,41 @@ Features:
 
 ---
 
+## Auto-Updates
+
+After installation, **everything auto-updates to the latest version** as soon as it's released. No manual intervention needed.
+
+### What updates and when
+
+| What | How | When |
+|------|-----|------|
+| All APT packages (Ubuntu, Docker, NVIDIA, Edge, CMake, gcc, git, etc.) | `unattended-upgrades` with `origin=*` | Daily |
+| Snap packages (VS Code, snap-store, etc.) | `snapd refresh` | Twice daily (midnight–4 AM) |
+| Node.js | `nvm install node` via cron | Daily |
+| npm globals (Claude Code, etc.) | `npm update -g` via cron | Daily |
+
+### If the laptop was off or offline
+
+| Scenario | What catches up |
+|----------|----------------|
+| Laptop boots after being off | `catch-up-updates.service` runs 60s after network is up |
+| WiFi/Ethernet reconnects after being offline | NetworkManager hook checks if last update was >6h ago, triggers catch-up |
+| Missed daily cron jobs | `anacron` re-runs them after boot |
+
+### Auto-reboot
+
+If a kernel or driver update requires a reboot, the system **auto-reboots at 4:00 AM**. Config files are preserved (`--force-confold`).
+
+### Logs
+
+| Log | What It Contains |
+|-----|-----------------|
+| `/var/log/unattended-upgrades/` | APT auto-update history |
+| `/var/log/node-auto-update.log` | Node.js and npm update history |
+| `/var/log/catch-up-updates.log` | Boot/reconnect catch-up activity |
+
+---
+
 ## System Settings Changed
 
 Every system setting modified by this setup is documented below. Nothing is hidden.
@@ -379,11 +445,31 @@ A custom AppArmor profile that grants Edge the `userns` permission, so it works 
 |--------|-------------|
 | `usermod -aG docker dmj` | Run `docker` without `sudo` |
 
+### GNOME Tweaks
+
+| Setting | Value | What It Does |
+|---------|-------|-------------|
+| `org.gnome.SessionManager logout-prompt` | `false` | Shutdown/restart happens immediately — no 60-second countdown dialog |
+
 ### Systemd Services
 
 | Service | What It Does |
 |---------|-------------|
 | `post-install.service` | One-shot: runs `post-install.sh` on first boot, then self-disables and deletes the script |
+| `catch-up-updates.service` | Runs missed auto-updates after boot (waits for network, then updates APT + Node.js + snaps) |
+| `unattended-upgrades.service` | Daily auto-update of all APT packages from all repos |
+
+### Cron Jobs
+
+| Job | Schedule | What It Does |
+|-----|----------|-------------|
+| `/etc/cron.daily/update-node-and-npm` | Daily (via anacron if missed) | Updates Node.js to latest + `npm update -g` |
+
+### NetworkManager Hooks
+
+| Hook | When It Fires | What It Does |
+|------|--------------|-------------|
+| `/etc/NetworkManager/dispatcher.d/99-catch-up-updates` | WiFi/Ethernet connects | Triggers catch-up updates if last update was >6 hours ago |
 
 ### Login Banner
 
@@ -510,7 +596,7 @@ late-commands:
 | Change disk sizes | Edit `size:` under `storage.config` in `autoinstall.yaml` |
 | Change username | Replace `dmj` in `autoinstall.yaml` and `post-install.sh` |
 | Change password | `openssl passwd -6 'newpass'` → replace hash in `autoinstall.yaml` |
-| Skip NVIDIA driver | Remove `nvidia-driver-535` from `post-install.sh` |
+| Skip NVIDIA driver | Remove `${NVIDIA_DRIVER}` line from `post-install.sh` |
 | Add to base install | Add to `apt-get install` block in `post-install.sh` |
 | Add desktop GUI | Add `apt-get install -y ubuntu-desktop-minimal` to `post-install.sh` |
 | Change sysctl values | Edit `cat > /etc/sysctl.d/...` blocks in `post-install.sh` |
@@ -532,6 +618,9 @@ late-commands:
 | Rufus USB read-only | Use Ventoy or Rufus DD mode |
 | Autoinstall not detected | Ensure `autoinstall.yaml` is in USB root |
 | Hangs at "Continue with autoinstall?" | Normal — press Enter or wait 30s |
+| Auto-updates not running | Check `systemctl status unattended-upgrades` and `/var/log/catch-up-updates.log` |
+| Node.js not updating | Check `/var/log/node-auto-update.log` and `crontab -l` |
+| System rebooted unexpectedly at 4 AM | Auto-reboot after kernel/driver update. Disable: set `Automatic-Reboot "false"` in `/etc/apt/apt.conf.d/50unattended-upgrades` |
 
 ---
 
@@ -555,4 +644,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 MIT License. See [LICENSE](LICENSE).
 
-**Built for Ubuntu 24.04 LTS (Noble Numbat) on x86_64.**
+**Built for Ubuntu 24.04 LTS (Noble Numbat) on x86_64. Future-proofed for 26.04 LTS.**
