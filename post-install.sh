@@ -73,13 +73,6 @@ apt-get install -y \
 # Remove Firefox (replaced by Edge)
 snap remove firefox 2>/dev/null || true
 
-# Remove Ubuntu snaps that aren't needed for development
-snap remove snap-store 2>/dev/null || true
-snap remove firmware-updater 2>/dev/null || true
-snap remove gnome-42-2204 2>/dev/null || true
-snap remove gtk-common-themes 2>/dev/null || true
-snap remove snapd-desktop-integration 2>/dev/null || true
-
 # Remove pre-installed Ubuntu bloat packages
 apt-get remove -y --purge \
   gnome-games \
@@ -105,14 +98,11 @@ apt-get remove -y --purge \
   gnome-clocks \
   gnome-font-viewer \
   gnome-logs \
-  usb-creator-gtk \
   brltty \
-  speech-dispatcher \
   orca \
   gnome-accessibility-themes \
   update-manager \
   language-selector-gnome \
-  power-profiles-daemon \
   yelp \
   2>/dev/null || true
 
