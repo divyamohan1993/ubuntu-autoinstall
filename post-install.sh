@@ -290,6 +290,20 @@ cat > /etc/systemd/logind.conf.d/no-wall.conf << 'EOF'
 WallMessage=
 EOF
 
+# Sleep/hibernate/power key policy (consolidated — no duplicate files)
+cat > /etc/systemd/logind.conf.d/sleep-policy.conf << 'EOF'
+[Login]
+HandleLidSwitch=hibernate
+HandleLidSwitchExternalPower=hibernate
+HandleLidSwitchDocked=ignore
+HandleSuspendKey=hibernate
+HandleSuspendKeyLongPress=hibernate
+HandleHibernateKey=hibernate
+HandleHibernateKeyLongPress=hibernate
+HandlePowerKey=poweroff
+HandlePowerKeyLongPress=poweroff
+EOF
+
 # Allow sudo users to reboot/shutdown without delay
 cat > /etc/polkit-1/rules.d/85-no-shutdown-delay.rules << 'POLKIT'
 polkit.addRule(function(action, subject) {
@@ -536,6 +550,32 @@ if lspci | grep -qi 'nvidia.*audio'; then
 SUBSYSTEM=="pci", ATTR{vendor}=="0x10de", ATTR{class}=="0x040300", ATTR{remove}="1"
 EOF
 fi
+
+# ─── 13c. CPU performance tuning ──────────────────────────────────────
+
+cat > /etc/systemd/system/ml-cpu-tune.service << 'EOF'
+[Unit]
+Description=ML Training CPU Performance Tuning
+After=multi-user.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+
+# Performance governor on all cores
+ExecStart=/bin/bash -c 'for g in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do echo performance > "$g" 2>/dev/null; done'
+# Turbo boost ON
+ExecStart=/bin/bash -c 'echo 0 > /sys/devices/system/cpu/intel_pstate/no_turbo 2>/dev/null || true'
+ExecStart=/bin/bash -c 'echo 1 > /sys/devices/system/cpu/cpufreq/boost 2>/dev/null || true'
+# Energy preference = performance (instant ramp to max)
+ExecStart=/bin/bash -c 'for e in /sys/devices/system/cpu/cpu*/cpufreq/energy_performance_preference; do echo performance > "$e" 2>/dev/null; done'
+# Enable all C-states (idle cores = zero power)
+ExecStart=/bin/bash -c 'for d in /sys/devices/system/cpu/cpu*/cpuidle/state*/disable; do echo 0 > "$d" 2>/dev/null; done'
+
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl enable ml-cpu-tune.service
 
 # ─── 14. Blacklist NVIDIA only if no compatible driver exists ───────────
 
