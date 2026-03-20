@@ -98,21 +98,8 @@ autoinstall:
     - jq
     - tmux
     - tree
-    - fzf
-    - ripgrep
-    - bat
-    - fd-find
-    - httpie
-    - lynx
-    - shellcheck
-    - cmake
-    - ninja-build
-    - sqlite3
-    - stress-ng
-    - pipx
     - python3-pip
     - python3-venv
-    - xvfb
     - ntfs-3g
 
   # ─── Late commands: run inside the installed system (chroot) ────────
