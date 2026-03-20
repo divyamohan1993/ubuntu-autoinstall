@@ -775,7 +775,6 @@ systemctl enable boot-guardian.timer
 # ─── 17. Done ─────────────────────────────────────────────────────────
 
 echo "=== Post-install completed at $(date) ==="
-echo "=== REBOOT RECOMMENDED ==="
 
 # Remind user to change password on next login
 cat > /etc/profile.d/change-password-reminder.sh << 'REMIND'
@@ -786,3 +785,8 @@ echo "║     sudo passwd dmj                                        ║"
 echo "╚══════════════════════════════════════════════════════════════╝"
 echo ""
 REMIND
+
+# Auto-reboot to apply all changes (kernel, drivers, initramfs, systemd config)
+echo "=== Auto-rebooting in 10 seconds to apply all changes ==="
+sleep 10
+systemctl reboot
