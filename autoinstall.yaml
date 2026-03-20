@@ -1,0 +1,158 @@
+#cloud-config
+autoinstall:
+  version: 1
+  locale: en_US.UTF-8
+  keyboard:
+    layout: us
+
+  # ─── Identity ───────────────────────────────────────────────────────
+  # ⚠️  DISCLAIMER: Default password is "dmj" (plain text, intentionally public).
+  # ⚠️  CHANGE YOUR PASSWORD IMMEDIATELY AFTER INSTALLATION:
+  # ⚠️    sudo passwd dmj
+  identity:
+    hostname: ubuntu-workstation
+    username: dmj
+    # Password: dmj (SHA-512 hash below — required by autoinstall format)
+    password: "$6$d2jdVFnvLKAKoje6$SXEtXvUUPO3oDlzLYNLI2ltGVAEaxAs26rXe3JsPNn.c6HpuWhyzoQjGDOFzTzGLdPs4gVV/JL5A0om5PnC850"
+
+  # ─── Storage: 1GB EFI | ~100GB root | 100GB experiments | rest=swap ─
+  storage:
+    config:
+      # Use the first disk (sda). Adjust if your target disk differs.
+      - id: disk0
+        type: disk
+        ptable: gpt
+        grub_device: false
+        match:
+          size: largest
+
+      # Partition 1: EFI System Partition (1GB)
+      - id: efi-part
+        type: partition
+        device: disk0
+        size: 1G
+        flag: boot
+        grub_device: true
+
+      # Partition 2: Root filesystem (~100GB)
+      - id: root-part
+        type: partition
+        device: disk0
+        size: 100G
+
+      # Partition 3: Experiments partition (100GB, NTFS)
+      - id: experiments-part
+        type: partition
+        device: disk0
+        size: 100G
+
+      # Partition 4: Swap (remainder of disk)
+      - id: swap-part
+        type: partition
+        device: disk0
+        size: -1  # Use all remaining space
+
+      # ── Formats ──
+      - id: efi-format
+        type: format
+        volume: efi-part
+        fstype: fat32
+
+      - id: root-format
+        type: format
+        volume: root-part
+        fstype: ext4
+
+      # NTFS formatting is done in late-commands (installer doesn't support ntfs natively)
+      - id: swap-format
+        type: format
+        volume: swap-part
+        fstype: swap
+
+      # ── Mounts ──
+      - id: efi-mount
+        type: mount
+        device: efi-format
+        path: /boot/efi
+
+      - id: root-mount
+        type: mount
+        device: root-format
+        path: /
+        options: "noatime,errors=remount-ro"
+
+      - id: swap-mount
+        type: mount
+        device: swap-format
+        path: none
+
+  # ─── SSH ────────────────────────────────────────────────────────────
+  ssh:
+    install-server: true
+    allow-pw: true
+
+  # ─── Packages to install during OS installation ─────────────────────
+  packages:
+    - git
+    - curl
+    - jq
+    - tmux
+    - tree
+    - fzf
+    - ripgrep
+    - bat
+    - fd-find
+    - httpie
+    - lynx
+    - shellcheck
+    - cmake
+    - ninja-build
+    - sqlite3
+    - stress-ng
+    - pipx
+    - python3-pip
+    - python3-venv
+    - xvfb
+    - ntfs-3g
+
+  # ─── Late commands: run inside the installed system (chroot) ────────
+  late-commands:
+    # Format the experiments partition as NTFS
+    - curtin in-target -- mkfs.ntfs -f /dev/disk/by-id/*-part3 || true
+
+    # Fetch post-install script from GitHub (works from anywhere with internet)
+    - curtin in-target -- curl -fsSL https://raw.githubusercontent.com/divyamohan1993/ubuntu-autoinstall/main/post-install.sh -o /root/post-install.sh
+    - curtin in-target -- chmod +x /root/post-install.sh
+
+    # Add fstab entry for experiments partition
+    - |
+      echo "# Experiments partition (NTFS)" >> /target/etc/fstab
+      echo "UUID=FILL_AFTER_FORMAT  /mnt/experiments  ntfs3 noatime,uid=1000,gid=1000,nofail  0  0" >> /target/etc/fstab
+
+    # Add tmpfs for /tmp
+    - |
+      echo "tmpfs  /tmp  tmpfs  noatime,nosuid,nodev,size=4G  0  0" >> /target/etc/fstab
+
+    # Create mount point
+    - mkdir -p /target/mnt/experiments
+
+    # Set post-install to run on first boot
+    - |
+      cat > /target/etc/systemd/system/post-install.service << 'UNIT'
+      [Unit]
+      Description=First-boot post-install setup
+      After=network-online.target
+      Wants=network-online.target
+      ConditionPathExists=/root/post-install.sh
+
+      [Service]
+      Type=oneshot
+      ExecStart=/root/post-install.sh
+      ExecStartPost=/bin/rm /root/post-install.sh
+      ExecStartPost=/bin/systemctl disable post-install.service
+      RemainAfterExit=true
+
+      [Install]
+      WantedBy=multi-user.target
+      UNIT
+    - curtin in-target -- systemctl enable post-install.service
