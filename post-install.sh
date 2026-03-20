@@ -229,7 +229,40 @@ sudo -u dmj bash -c '
   code --install-extension anthropic.claude-code 2>/dev/null || true
 '
 
-# ─── 9. Done ──────────────────────────────────────────────────────────
+# ─── 9. Configure Claude Code: agent teams, plugins, marketplace ─────
+
+sudo -u dmj mkdir -p /home/dmj/.claude
+sudo -u dmj tee /home/dmj/.claude/settings.json > /dev/null << 'CLAUDE_SETTINGS'
+{
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
+  "enabledPlugins": {
+    "frontend-design@claude-plugins-official": true,
+    "superpowers@claude-plugins-official": true,
+    "code-review@claude-plugins-official": true,
+    "github@claude-plugins-official": true,
+    "feature-dev@claude-plugins-official": true,
+    "playwright@claude-plugins-official": true,
+    "autofix-bot@claude-plugins-official": true,
+    "semgrep@claude-plugins-official": true,
+    "claude-code-setup@claude-plugins-official": true,
+    "security-guidance@claude-plugins-official": true,
+    "code-simplifier@claude-plugins-official": true,
+    "claude-md-management@claude-plugins-official": true
+  },
+  "extraKnownMarketplaces": {
+    "claude-plugins-official": {
+      "source": {
+        "source": "github",
+        "repo": "anthropics/claude-plugins-official"
+      }
+    }
+  }
+}
+CLAUDE_SETTINGS
+
+# ─── 10. Done ─────────────────────────────────────────────────────────
 
 echo "=== Post-install completed at $(date) ==="
 echo "=== REBOOT RECOMMENDED ==="
