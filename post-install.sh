@@ -68,6 +68,9 @@ apt-get install -y \
   python3-pip \
   python3-venv \
   ntfs-3g \
+  build-essential \
+  cmake \
+  ninja-build \
   ${HWE_KERNEL} \
   ${NVIDIA_DRIVER} \
   microsoft-edge-stable \
