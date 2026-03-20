@@ -357,6 +357,52 @@ echo "$(date): Node $(node --version), npm $(npm --version)" >> /var/log/node-au
 CRON
 chmod +x /etc/cron.daily/update-node-and-npm
 
+# Catch-up service: runs missed updates after boot + when network connects
+apt-get install -y anacron
+
+cat > /etc/apt/apt.conf.d/10periodic-boot << 'EOF'
+APT::Periodic::RandomSleep "0";
+EOF
+
+cat > /etc/systemd/system/catch-up-updates.service << 'EOF'
+[Unit]
+Description=Catch-up on missed auto-updates after boot
+After=network-online.target
+Wants=network-online.target
+ConditionACPower=true
+
+[Service]
+Type=oneshot
+ExecStartPre=/bin/sleep 60
+ExecStart=/bin/bash -c 'apt-get update -qq && unattended-upgrade -v >> /var/log/catch-up-updates.log 2>&1'
+ExecStartPost=/bin/bash -c '/etc/cron.daily/update-node-and-npm'
+ExecStartPost=/bin/bash -c 'snap refresh >> /var/log/catch-up-updates.log 2>&1 || true'
+RemainAfterExit=true
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable catch-up-updates.service
+
+# NetworkManager hook: trigger catch-up when WiFi/Ethernet connects
+cat > /etc/NetworkManager/dispatcher.d/99-catch-up-updates << 'DISPATCH'
+#!/bin/bash
+if [ "$2" = "up" ] || [ "$2" = "connectivity-change" ]; then
+    STAMP="/var/lib/apt/periodic/update-success-stamp"
+    if [ -f "$STAMP" ]; then
+        AGE=$(( $(date +%s) - $(stat -c %Y "$STAMP") ))
+        if [ "$AGE" -gt 21600 ]; then
+            systemctl start catch-up-updates.service &
+        fi
+    else
+        systemctl start catch-up-updates.service &
+    fi
+fi
+DISPATCH
+chmod +x /etc/NetworkManager/dispatcher.d/99-catch-up-updates
+
 # ─── 11. Done ─────────────────────────────────────────────────────────
 
 echo "=== Post-install completed at $(date) ==="
