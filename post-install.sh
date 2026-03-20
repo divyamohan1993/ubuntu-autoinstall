@@ -304,6 +304,21 @@ HandlePowerKey=poweroff
 HandlePowerKeyLongPress=poweroff
 EOF
 
+# Configure hibernate resume from swap — without this, lid close hangs on wake
+SWAP_DEV=$(swapon --show=NAME --noheadings | head -1)
+if [ -n "$SWAP_DEV" ]; then
+  SWAP_UUID=$(blkid -s UUID -o value "$SWAP_DEV")
+  if [ -n "$SWAP_UUID" ]; then
+    echo "RESUME=UUID=$SWAP_UUID" > /etc/initramfs-tools/conf.d/resume
+    # Add resume= to kernel params if not already there
+    if ! grep -q "resume=" /etc/default/grub; then
+      sed -i "s|GRUB_CMDLINE_LINUX_DEFAULT=\"quiet splash|GRUB_CMDLINE_LINUX_DEFAULT=\"quiet splash resume=UUID=$SWAP_UUID|" /etc/default/grub
+      update-grub
+    fi
+    update-initramfs -u
+  fi
+fi
+
 # Allow sudo users to reboot/shutdown without delay
 cat > /etc/polkit-1/rules.d/85-no-shutdown-delay.rules << 'POLKIT'
 polkit.addRule(function(action, subject) {
