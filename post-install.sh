@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════════
 # Post-install script — runs on first boot after autoinstall
-# Installs all extra repos, packages, and applies system optimizations
+# Lean setup: drivers, Docker, core CLI tools, sysctl optimizations
+# Everything else can be installed on demand (see on-demand-install.sh)
 # ═══════════════════════════════════════════════════════════════════════
 set -euo pipefail
 exec > /var/log/post-install.log 2>&1
@@ -18,40 +19,16 @@ chmod a+r /etc/apt/keyrings/docker.asc
 echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu noble stable" \
   > /etc/apt/sources.list.d/docker.list
 
-# NVIDIA CUDA
+# NVIDIA (driver repo — for GPU driver, not full CUDA toolkit)
 curl -fsSL https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb \
   -o /tmp/cuda-keyring.deb
 dpkg -i /tmp/cuda-keyring.deb
-
-# MongoDB 8.0
-curl -fsSL https://www.mongodb.org/static/pgp/server-8.0.asc | \
-  gpg --dearmor -o /usr/share/keyrings/mongodb-server-8.0.gpg
-echo "deb [arch=amd64 signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg] https://repo.mongodb.org/apt/ubuntu noble/mongodb-org/8.0 multiverse" \
-  > /etc/apt/sources.list.d/mongodb-org-8.0.list
-
-# HashiCorp (Terraform)
-curl -fsSL https://apt.releases.hashicorp.com/gpg | \
-  gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
-echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com noble main" \
-  > /etc/apt/sources.list.d/hashicorp.list
 
 # Microsoft Edge
 curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | \
   gpg --dearmor -o /usr/share/keyrings/microsoft-edge.gpg
 echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft-edge.gpg] https://packages.microsoft.com/repos/edge stable main" \
   > /etc/apt/sources.list.d/microsoft-edge.list
-
-# R Project
-curl -fsSL https://cloud.r-project.org/bin/linux/ubuntu/marutter_pubkey.asc | \
-  gpg --dearmor -o /usr/share/keyrings/r-project.gpg
-echo "deb [signed-by=/usr/share/keyrings/r-project.gpg] https://cloud.r-project.org/bin/linux/ubuntu noble-cran40/" \
-  > /etc/apt/sources.list.d/r-project.list
-
-# Trivy (security scanner)
-curl -fsSL https://aquasecurity.github.io/trivy-repo/deb/public.key | \
-  gpg --dearmor -o /usr/share/keyrings/trivy.gpg
-echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb noble main" \
-  > /etc/apt/sources.list.d/trivy.list
 
 # eza (modern ls)
 curl -fsSL https://raw.githubusercontent.com/eza-community/eza/main/deb.asc | \
@@ -62,65 +39,78 @@ echo "deb [signed-by=/etc/apt/keyrings/gierens.gpg] http://deb.gierens.de stable
 # Git PPA (latest git)
 add-apt-repository -y ppa:git-core/ppa
 
-# ─── 2. Install all packages ─────────────────────────────────────────
+# ─── 2. Install essential packages only ───────────────────────────────
 
 apt-get update
 
 apt-get install -y \
-  ansible \
-  cmake \
-  containerd.io \
-  cuda-toolkit \
   curl \
-  docker-buildx-plugin \
-  docker-ce \
-  docker-ce-cli \
-  docker-ce-rootless-extras \
-  docker-compose-plugin \
-  eza \
-  gfortran \
   git \
   git-delta \
-  httpie \
   jq \
-  libfftw3-dev \
-  libgmp-dev \
-  liblapack-dev \
-  libmpc-dev \
-  libmpfr-dev \
-  libopenblas-dev \
-  libopenmpi-dev \
-  linux-generic-hwe-24.04 \
-  lynx \
-  microsoft-edge-stable \
-  mongodb-org \
-  ninja-build \
-  nvidia-driver-535 \
-  openmpi-bin \
-  pipx \
-  postgresql \
-  postgresql-client \
-  postgresql-contrib \
-  pre-commit \
-  python3-docx \
-  python3-pip \
-  python3-venv \
-  r-base \
-  redis-server \
-  redis-tools \
-  ripgrep \
-  shellcheck \
-  sqlite3 \
-  stress-ng \
-  terraform \
   tmux \
   tree \
-  trivy \
-  ubuntu-restricted-addons \
-  xvfb \
   fzf \
+  ripgrep \
   bat \
-  fd-find
+  fd-find \
+  eza \
+  pipx \
+  python3-pip \
+  python3-venv \
+  ntfs-3g \
+  linux-generic-hwe-24.04 \
+  nvidia-driver-535 \
+  microsoft-edge-stable \
+  containerd.io \
+  docker-ce \
+  docker-ce-cli \
+  docker-buildx-plugin \
+  docker-compose-plugin
+
+# ─── 2b. Remove bloatware ──────────────────────────────────────────────
+
+# Remove Firefox (replaced by Edge)
+snap remove firefox 2>/dev/null || true
+
+# Remove Ubuntu snaps that aren't needed for development
+snap remove snap-store 2>/dev/null || true
+snap remove firmware-updater 2>/dev/null || true
+snap remove gnome-42-2204 2>/dev/null || true
+snap remove gtk-common-themes 2>/dev/null || true
+snap remove snapd-desktop-integration 2>/dev/null || true
+
+# Remove pre-installed Ubuntu bloat packages
+apt-get remove -y --purge \
+  gnome-games \
+  aisleriot \
+  gnome-mahjongg \
+  gnome-mines \
+  gnome-sudoku \
+  thunderbird \
+  libreoffice-* \
+  rhythmbox \
+  shotwell \
+  cheese \
+  totem \
+  remmina \
+  transmission-gtk \
+  simple-scan \
+  gnome-todo \
+  gnome-contacts \
+  gnome-calendar \
+  gnome-maps \
+  gnome-weather \
+  gnome-clocks \
+  usb-creator-gtk \
+  brltty \
+  speech-dispatcher \
+  orca \
+  gnome-accessibility-themes \
+  2>/dev/null || true
+
+# Clean up orphaned dependencies
+apt-get autoremove -y --purge
 
 # ─── 3. Sysctl optimizations ─────────────────────────────────────────
 
@@ -178,11 +168,34 @@ SYSCTL
 # Apply immediately (will also apply on every boot)
 sysctl --system
 
-# ─── 4. AppArmor unprivileged userns (needed for some containers) ────
+# ─── 4. AppArmor / Edge sandbox fix ───────────────────────────────────
+# Without this, Edge crashes because it can't create sandboxed processes.
+# This allows unprivileged user namespaces (needed by Chromium-based browsers
+# and many container runtimes).
 
 cat > /etc/sysctl.d/99-edge-sandbox.conf << 'EOF'
 kernel.apparmor_restrict_unprivileged_userns = 0
 EOF
+sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+# Also create an AppArmor profile exception for Edge so it works
+# even if the sysctl gets reverted by an Ubuntu update
+if [ -d /etc/apparmor.d ]; then
+  cat > /etc/apparmor.d/microsoft-edge << 'APPARMOR'
+# Allow Microsoft Edge to use unprivileged user namespaces for its sandbox
+abi <abi/4.0>,
+
+include <tunables/global>
+
+profile microsoft-edge /opt/microsoft/msedge/microsoft-edge flags=(unconfined) {
+  userns,
+  include if exists <local/microsoft-edge>
+}
+APPARMOR
+
+  # Reload AppArmor
+  systemctl reload apparmor 2>/dev/null || true
+fi
 
 # ─── 5. Add user to docker group ─────────────────────────────────────
 
@@ -192,8 +205,8 @@ usermod -aG docker dmj || true
 
 snap install code --classic
 
-# ─── 7. Install Node.js (via nvm — for the user) ─────────────────────
-# This creates a helper script the user can source on first login
+# ─── 7. Install Node.js (via nvm) + Claude Code ──────────────────────
+
 if [ ! -d /home/dmj/.nvm ]; then
   sudo -u dmj bash -c '
     curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
@@ -206,7 +219,6 @@ fi
 
 # ─── 8. Install Claude Code VS Code extension ────────────────────────
 
-# Install the official Claude extension from VS Code marketplace
 sudo -u dmj bash -c '
   code --install-extension anthropic.claude-code 2>/dev/null || true
 '
