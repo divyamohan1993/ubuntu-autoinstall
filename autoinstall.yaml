@@ -1,4 +1,11 @@
 #cloud-config
+# ═══════════════════════════════════════════════════════════════════════
+# Ubuntu Autoinstall Configuration
+# Tested: Ubuntu 24.04 LTS (Noble Numbat)
+# For 26.04 LTS: update the ISO filename in ventoy.json, this YAML
+#   should work as-is (autoinstall version: 1 is forward-compatible).
+#   post-install.sh auto-detects the Ubuntu version at runtime.
+# ═══════════════════════════════════════════════════════════════════════
 autoinstall:
   version: 1
   locale: en_US.UTF-8
