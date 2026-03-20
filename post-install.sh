@@ -290,18 +290,30 @@ cat > /etc/systemd/logind.conf.d/no-wall.conf << 'EOF'
 WallMessage=
 EOF
 
-# Sleep/hibernate/power key policy (consolidated — no duplicate files)
+# Sleep/power key policy (consolidated — no duplicate files)
+# NOTE: Hibernate fails on NVIDIA Optimus laptops (nv_pmops_freeze error -5).
+# Use suspend (sleep to RAM) instead — reliable, fast wake, low power.
 cat > /etc/systemd/logind.conf.d/sleep-policy.conf << 'EOF'
 [Login]
-HandleLidSwitch=hibernate
-HandleLidSwitchExternalPower=hibernate
+HandleLidSwitch=suspend
+HandleLidSwitchExternalPower=suspend
 HandleLidSwitchDocked=ignore
-HandleSuspendKey=hibernate
-HandleSuspendKeyLongPress=hibernate
-HandleHibernateKey=hibernate
-HandleHibernateKeyLongPress=hibernate
+HandleSuspendKey=suspend
+HandleSuspendKeyLongPress=poweroff
+HandleHibernateKey=suspend
+HandleHibernateKeyLongPress=poweroff
 HandlePowerKey=poweroff
 HandlePowerKeyLongPress=poweroff
+EOF
+
+# Disable hibernate (NVIDIA Optimus can't freeze GPU state)
+mkdir -p /etc/systemd/sleep.conf.d
+cat > /etc/systemd/sleep.conf.d/hibernate-policy.conf << 'EOF'
+[Sleep]
+AllowSuspend=yes
+AllowHibernation=no
+AllowSuspendThenHibernate=no
+AllowHybridSleep=no
 EOF
 
 # Configure hibernate resume from swap — without this, lid close hangs on wake
