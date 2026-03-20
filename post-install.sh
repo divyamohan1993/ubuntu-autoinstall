@@ -604,6 +604,18 @@ WantedBy=multi-user.target
 EOF
 systemctl enable ml-cpu-tune.service
 
+# ─── 13d. NVIDIA power management for suspend/resume ─────────────────
+# Without this, suspend/hibernate fails with nv_pmops_suspend error -5.
+# The driver needs: PreserveVideoMemoryAllocations=1, a temp path for VRAM,
+# and the nvidia-suspend/resume/hibernate systemd services enabled.
+
+if [ -n "$NVIDIA_DRIVER" ]; then
+  cat > /etc/modprobe.d/nvidia-power-mgmt.conf << 'EOF'
+options nvidia NVreg_PreserveVideoMemoryAllocations=1 NVreg_TemporaryFilePath=/tmp
+EOF
+  systemctl enable nvidia-suspend.service nvidia-hibernate.service nvidia-resume.service 2>/dev/null || true
+fi
+
 # ─── 14. Blacklist NVIDIA only if no compatible driver exists ───────────
 
 if [ -z "$NVIDIA_DRIVER" ] && lspci | grep -qi 'nvidia'; then
