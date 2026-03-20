@@ -127,6 +127,14 @@ do_install() {
       run_install "MongoDB 8.0" apt_install mongodb-org
       run_install "Redis" apt_install redis-server redis-tools
       run_install "SQLite" apt_install sqlite3
+
+      # Disable database services from auto-starting at boot (start on demand)
+      info "Disabling database services from boot (use 'systemctl start <service>' when needed)"
+      sudo systemctl disable mongod redis-server 2>/dev/null || true
+      # Disable all postgresql cluster instances
+      for pg_unit in $(systemctl list-unit-files --type=service 'postgresql@*' --no-legend 2>/dev/null | awk '{print $1}'); do
+        sudo systemctl disable "$pg_unit" 2>/dev/null || true
+      done
       ;;
 
     cuda)

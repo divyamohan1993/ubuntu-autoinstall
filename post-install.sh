@@ -245,9 +245,54 @@ fi
 # Disable the 60-second shutdown confirmation dialog — shuts down immediately
 sudo -u dmj dbus-launch gsettings set org.gnome.SessionManager logout-prompt false 2>/dev/null || true
 
-# ─── 6. Add user to docker group ─────────────────────────────────────
+# ─── 5b. Fast shutdown/reboot ────────────────────────────────────────
+
+# Reduce service stop timeout to 10s (default 90s) so restart is near-instant
+mkdir -p /etc/systemd/system.conf.d
+cat > /etc/systemd/system.conf.d/fast-shutdown.conf << 'EOF'
+[Manager]
+DefaultTimeoutStopSec=10s
+EOF
+
+# Limit shutdown inhibitor delay to 5s (apps like VS Code, GNOME Shell)
+mkdir -p /etc/systemd/logind.conf.d
+cat > /etc/systemd/logind.conf.d/fast-restart.conf << 'EOF'
+[Login]
+InhibitDelayMaxSec=5
+EOF
+
+# Suppress broadcast "wall" messages on shutdown/reboot
+systemctl mask systemd-ask-password-wall.path 2>/dev/null || true
+systemctl mask systemd-ask-password-wall.service 2>/dev/null || true
+
+for action in halt reboot poweroff; do
+  mkdir -p /etc/systemd/system/systemd-${action}.service.d
+  cat > /etc/systemd/system/systemd-${action}.service.d/no-wall.conf << EOF2
+[Service]
+ExecStart=
+ExecStart=/usr/lib/systemd/systemd-shutdown ${action} --no-wall
+EOF2
+done
+
+# Allow sudo users to reboot/shutdown without delay
+cat > /etc/polkit-1/rules.d/85-no-shutdown-delay.rules << 'POLKIT'
+polkit.addRule(function(action, subject) {
+    if ((action.id == "org.freedesktop.login1.power-off" ||
+         action.id == "org.freedesktop.login1.power-off-multiple-sessions" ||
+         action.id == "org.freedesktop.login1.reboot" ||
+         action.id == "org.freedesktop.login1.reboot-multiple-sessions") &&
+        subject.isInGroup("sudo")) {
+        return polkit.Result.YES;
+    }
+});
+POLKIT
+
+# ─── 6. Add user to docker group + socket-activate ───────────────────
 
 usermod -aG docker dmj || true
+# Don't start Docker daemon at boot; socket-activate on first use instead
+systemctl disable docker.service 2>/dev/null || true
+systemctl enable docker.socket 2>/dev/null || true
 
 # ─── 7. Install VS Code via snap ─────────────────────────────────────
 
@@ -376,18 +421,26 @@ ConditionACPower=true
 
 [Service]
 Type=oneshot
-ExecStartPre=/bin/sleep 60
 ExecStart=/bin/bash -c 'apt-get update -qq && unattended-upgrade -v >> /var/log/catch-up-updates.log 2>&1'
 ExecStartPost=/bin/bash -c '/etc/cron.daily/update-node-and-npm'
 ExecStartPost=/bin/bash -c 'snap refresh >> /var/log/catch-up-updates.log 2>&1 || true'
-RemainAfterExit=true
+EOF
+
+# Timer triggers the service 2 min after boot — does NOT block boot
+cat > /etc/systemd/system/catch-up-updates.timer << 'EOF'
+[Unit]
+Description=Run catch-up updates 2 minutes after boot
+
+[Timer]
+OnBootSec=120
+Unit=catch-up-updates.service
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=timers.target
 EOF
 
 systemctl daemon-reload
-systemctl enable catch-up-updates.service
+systemctl enable catch-up-updates.timer
 
 # NetworkManager hook: trigger catch-up when WiFi/Ethernet connects
 cat > /etc/NetworkManager/dispatcher.d/99-catch-up-updates << 'DISPATCH'
