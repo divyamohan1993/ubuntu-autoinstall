@@ -787,6 +787,6 @@ echo ""
 REMIND
 
 # Auto-reboot to apply all changes (kernel, drivers, initramfs, systemd config)
-echo "=== Auto-rebooting in 10 seconds to apply all changes ==="
-sleep 10
+echo "=== Auto-rebooting in 30 seconds to apply all changes ==="
+sleep 30
 systemctl reboot
