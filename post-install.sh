@@ -93,6 +93,7 @@ apt-get remove -y --purge \
   shotwell \
   cheese \
   totem \
+  totem-plugins \
   remmina \
   transmission-gtk \
   simple-scan \
@@ -102,11 +103,26 @@ apt-get remove -y --purge \
   gnome-maps \
   gnome-weather \
   gnome-clocks \
+  gnome-characters \
+  gnome-font-viewer \
+  gnome-logs \
+  gnome-power-manager \
+  gnome-startup-applications \
+  eog \
+  evince \
   usb-creator-gtk \
   brltty \
   speech-dispatcher \
   orca \
   gnome-accessibility-themes \
+  gnome-software \
+  software-properties-gtk \
+  update-manager \
+  language-selector-gnome \
+  power-profiles-daemon \
+  baobab \
+  seahorse \
+  yelp \
   2>/dev/null || true
 
 # Clean up orphaned dependencies
