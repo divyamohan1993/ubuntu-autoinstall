@@ -130,6 +130,13 @@ autoinstall:
     # Create mount point
     - mkdir -p /target/mnt/experiments
 
+    # Swap tuning: swappiness=30 avoids thrashing but starts swapping before RAM starvation
+    - |
+      echo "" >> /target/etc/sysctl.conf
+      echo "# Swap tuning: start swapping before RAM starvation but not too eagerly" >> /target/etc/sysctl.conf
+      echo "vm.swappiness = 30" >> /target/etc/sysctl.conf
+      echo "vm.vfs_cache_pressure = 100" >> /target/etc/sysctl.conf
+
     # Set post-install to run on first boot
     - |
       cat > /target/etc/systemd/system/post-install.service << 'UNIT'
