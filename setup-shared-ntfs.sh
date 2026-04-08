@@ -72,7 +72,7 @@ log "Creating mount point $MOUNT..."
 mkdir -p "$MOUNT"
 
 # ─── fstab ───
-FSTAB_LINE="UUID=$UUID  $MOUNT  ntfs3  noatime,uid=$USER_ID,gid=$GROUP_ID,fmask=0022,dmask=0000,windows_names,prealloc,nofail  0  0"
+FSTAB_LINE="UUID=$UUID  $MOUNT  ntfs3  noatime,uid=$USER_ID,gid=$GROUP_ID,dmask=0000,fmask=0000,windows_names,prealloc,nofail  0  0"
 
 # remove any existing entry for this mountpoint or device
 if grep -qE "^\s*UUID=\S+\s+${MOUNT}\s" /etc/fstab 2>/dev/null; then
